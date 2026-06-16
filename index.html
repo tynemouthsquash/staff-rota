@@ -346,13 +346,15 @@ try {
 } catch(e) { console.warn('Supabase init failed:', e); }
 
 let _syncPending = false;
-let _syncTimer = null;
 
 // Save a named state key to Supabase (debounced 800ms to batch rapid changes)
+const _syncTimers = {};
+
 async function dbSave(key, value) {
-  if (!_sb) return; // offline / not configured
-  clearTimeout(_syncTimer);
-  _syncTimer = setTimeout(async () => {
+  if (!_sb) return;
+  // Use a per-key timer so saves don't cancel each other
+  clearTimeout(_syncTimers[key]);
+  _syncTimers[key] = setTimeout(async () => {
     try {
       await _sb.from('rota_state').upsert({ key, value, updated_at: new Date().toISOString() });
     } catch(e) { console.warn('Sync error:', e); }
@@ -402,6 +404,7 @@ async function loadFromDB() {
     seed();
   }
   hideLoader();
+  ws = gM(today); // always open on current week after load
   rw();
 }
 
