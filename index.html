@@ -183,7 +183,6 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 /* TOAST */
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:9px 18px;border-radius:8px;font-size:12px;z-index:200;pointer-events:none;max-width:88vw;text-align:center;font-weight:600;box-shadow:0 4px 16px rgba(10,30,61,.25)}
 </style>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 <div class="app" id="app">
@@ -331,7 +330,7 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 //   create policy "Public update" on rota_state for update using (true);
 //
 // 4. Go to Project Settings > API and copy your values below:
-const SUPABASE_URL = 'https://oaeiikgzdyprxkfzztha.supabase.co/rest/v1/';       // e.g. https://abcxyz.supabase.co
+const SUPABASE_URL = 'https://oaeiikgzdyprxkfzztha.supabase.co';       // e.g. https://abcxyz.supabase.co
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9hZWlpa2d6ZHlwcnhrZnp6dGhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjIzNjYsImV4cCI6MjA5NzE5ODM2Nn0.bLEPq-4JCneMaLwBzS_rdFOnfERvvNkwEENtY9qgF2g'; // long string starting with eyJ...
 
 // ============================================================
@@ -340,7 +339,9 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 let _sb = null;
 try {
   if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && typeof supabase !== 'undefined') {
-    _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Strip any accidental trailing path (e.g. /rest/v1) — URL must be bare domain only
+    const cleanUrl = SUPABASE_URL.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
+    _sb = supabase.createClient(cleanUrl, SUPABASE_ANON_KEY);
   }
 } catch(e) { console.warn('Supabase init failed:', e); }
 
@@ -374,6 +375,7 @@ async function loadFromDB() {
   if (!_sb) {
     // No database configured — run with demo data directly
     if (SUPABASE_URL === 'YOUR_SUPABASE_URL') showSetupBanner();
+    bH();
     seed();
     rw();
     return;
@@ -391,11 +393,12 @@ async function loadFromDB() {
     if (map.swpBrd) swpBrd = map.swpBrd;
     if (map.swpPnd) swpPnd = map.swpPnd;
     if (map.hol)    HOL    = map.hol;
+    bH(); // always ensure HOL entries exist for all staff
     if (!map.staff && !map.base) { seed(); saveAll(); }
-    else bH();
   } catch(e) {
     console.warn('DB load failed, running offline:', e);
     showToastError('Database unavailable — running offline.');
+    bH();
     seed();
   }
   hideLoader();
