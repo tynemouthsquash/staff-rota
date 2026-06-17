@@ -330,8 +330,8 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 //   create policy "Public update" on rota_state for update using (true);
 //
 // 4. Go to Project Settings > API and copy your values below:
-const SUPABASE_URL = 'https://oaeiikgzdyprxkfzztha.supabase.co';       // e.g. https://abcxyz.supabase.co
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9hZWlpa2d6ZHlwcnhrZnp6dGhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjIzNjYsImV4cCI6MjA5NzE5ODM2Nn0.bLEPq-4JCneMaLwBzS_rdFOnfERvvNkwEENtY9qgF2g'; // long string starting with eyJ...
+const SUPABASE_URL = 'https://oaeiikgzdyprxkfzztha.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9hZWlpa2d6ZHlwcnhrZnp6dGhhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjIzNjYsImV4cCI6MjA5NzE5ODM2Nn0.bLEPq-4JCneMaLwBzS_rdFOnfERvvNkwEENtY9qgF2g';
 
 // ============================================================
 // DO NOT EDIT BELOW THIS LINE
@@ -540,43 +540,47 @@ function rem(n){return+(tot(n)-((HOL[n]||{}).taken||0)).toFixed(1);}
 bH();
 
 function seed(){
-  const ah=(n,da,h,s)=>{const d=new Date(today);d.setDate(d.getDate()-da);HOL[n].req.push({id:'req_'+n+'_'+da,date:`${d.getDate()} ${MON[d.getMonth()]}`,hours:h,shifts:'Historical',shiftKeys:[],status:s});if(s==='approved')HOL[n].taken=+(HOL[n].taken+h).toFixed(1);};
-  ah('Hazel',14,15,'approved');ah('Hazel',3,7.5,'pending');
+  const ah=(n,da,h,s)=>{
+    if(!HOL[n])return; // safety check — skip if staff member doesn't exist
+    const d=new Date(today);d.setDate(d.getDate()-da);
+    HOL[n].req.push({id:'req_'+n+'_'+da,date:`${d.getDate()} ${MON[d.getMonth()]}`,hours:h,shifts:'Historical',shiftKeys:[],status:s});
+    if(s==='approved')HOL[n].taken=+(HOL[n].taken+h).toFixed(1);
+  };
   ah('Claire',21,30,'approved');ah('Claire',5,7.5,'pending');
   ah('Kath',10,15,'approved');ah('Vicky',7,7.5,'approved');
   ah('Matthew',2,7.5,'pending');ah('Emily',18,15,'approved');
-  HOL['James'].upd.push({id:'upd_j1',date:'Today',hours:15,reason:'Family event',status:'pending',shifts:'This week',shiftKeys:[]});
-  // Seed sick leave for Matthew — 3 shifts, using hours-based tracking
+  if(HOL['James'])HOL['James'].upd.push({id:'upd_j1',date:'Today',hours:15,reason:'Family event',status:'pending',shifts:'This week',shiftKeys:[]});
+  // Seed sick leave for Matthew
   initSick('Matthew');
-  const mattHrs=sh({s:'18:00',e:'23:30'});// Matthew's Tue evening shift = 5.5hrs
+  const mattHrs=sh({s:'18:00',e:'23:30'});
   for(let i=1;i<=3;i++){
     const sickDate=new Date(today.getTime()-(i*7*864e5));
     HOL['Matthew'].sick.push({id:'sk_demo_'+i,shiftId:null,date:sickDate.toLocaleDateString('en-GB'),hours:mattHrs,note:'Self-certified',status:'logged'});
   }
-  HOL['Matthew'].sickHrsTotal=+(mattHrs*3).toFixed(2);;
-  // Sunday 2-staff
+  HOL['Matthew'].sickHrsTotal=+(mattHrs*3).toFixed(2);
+  // Sunday 2-staff modification
   const sun=new Date(ws);sun.setDate(sun.getDate()+6);
   dOv[ddk(sun,6)]=[{s:'10:00',e:'17:00',staff:'Claire',type:'modified'},{s:'17:00',e:'23:00',staff:'James',type:'modified'}];
   // Saturday AM covered by Emma
   const sat=new Date(ws);sat.setDate(sat.getDate()+5);
   const si=BASE.findIndex(b=>b.day===5&&b.s==='09:00');
-  sOv[`${sat.toDateString()}-${si}`]={type:'covered',staff:'Emma',origStaff:'Kath'};
+  if(si>=0)sOv[`${sat.toDateString()}-${si}`]={type:'covered',staff:'Emma',origStaff:'Kath'};
   // Thursday eve needs cover
   const thu=new Date(ws);thu.setDate(thu.getDate()+3);
   const ti=BASE.findIndex(b=>b.day===3&&b.s==='18:30');
-  sOv[`${thu.toDateString()}-${ti}`]={type:'cover',staff:''};
+  if(ti>=0)sOv[`${thu.toDateString()}-${ti}`]={type:'cover',staff:''};
   // Wednesday Andrew holiday
   const wed=new Date(ws);wed.setDate(wed.getDate()+2);
   const wi=BASE.findIndex(b=>b.day===2&&b.s==='18:30');
-  sOv[`${wed.toDateString()}-${wi}`]={type:'hol',staff:'Andrew'};
+  if(wi>=0)sOv[`${wed.toDateString()}-${wi}`]={type:'hol',staff:'Andrew'};
   // Friday Kath swap with 2 volunteers
   const fri=new Date(ws);fri.setDate(fri.getDate()+4);
   const fi=BASE.findIndex(b=>b.day===4&&b.s==='12:00');
-  swpBrd.push({id:'s1',shiftId:`${fri.toDateString()}-${fi}`,day:4,s:'12:00',e:'18:30',staff:'Kath',dateStr:`${fri.getDate()} ${MON[fri.getMonth()]}`,vols:[{name:'Emma',label:`Sat ${fmt('14:00')}–${fmt('19:00')}`},{name:'Matthew',label:`Tue ${fmt('18:00')}–${fmt('23:30')}`}]});
+  if(fi>=0)swpBrd.push({id:'s1',shiftId:`${fri.toDateString()}-${fi}`,day:4,s:'12:00',e:'18:30',staff:'Kath',dateStr:`${fri.getDate()} ${MON[fri.getMonth()]}`,vols:[{name:'Emma',label:`Sat ${fmt('14:00')}–${fmt('19:00')}`},{name:'Matthew',label:`Tue ${fmt('18:00')}–${fmt('23:30')}`}]});
   // Next week Vicky swap open
   const nxt=new Date(ws);nxt.setDate(nxt.getDate()+7);
   const ni=BASE.findIndex(b=>b.day===0&&b.s==='18:30');
-  swpBrd.push({id:'s2',shiftId:`${nxt.toDateString()}-${ni}`,day:0,s:'18:30',e:'23:30',staff:'Vicky',dateStr:`${nxt.getDate()} ${MON[nxt.getMonth()]}`,vols:[]});
+  if(ni>=0)swpBrd.push({id:'s2',shiftId:`${nxt.toDateString()}-${ni}`,day:0,s:'18:30',e:'23:30',staff:'Vicky',dateStr:`${nxt.getDate()} ${MON[nxt.getMonth()]}`,vols:[]});
 }
 let eDraft={},eSelDate=null,eCalMo=new Date(today.getFullYear(),today.getMonth(),1);
 
