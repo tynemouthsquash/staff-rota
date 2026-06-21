@@ -337,32 +337,36 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // DO NOT EDIT BELOW THIS LINE
 // ============================================================
 let _sb = null;
-try {
-  if (SUPABASE_URL !== 'YOUR_SUPABASE_URL' && typeof supabase !== 'undefined') {
-    // Strip any accidental trailing path (e.g. /rest/v1) — URL must be bare domain only
-    const cleanUrl = SUPABASE_URL.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
-    _sb = supabase.createClient(cleanUrl, SUPABASE_ANON_KEY);
-  }
-} catch(e) { console.warn('Supabase init failed:', e); }
-
+const _syncTimers = {};
 let _syncPending = false;
 
-// Save a named state key to Supabase (debounced 800ms to batch rapid changes)
-const _syncTimers = {};
+// Initialise Supabase client after DOM + scripts are ready
+function initSB() {
+  try {
+    if (typeof supabase !== 'undefined' && SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
+      const cleanUrl = SUPABASE_URL.replace(/\/rest\/v1\/?$/, '').replace(/\/$/, '');
+      _sb = supabase.createClient(cleanUrl, SUPABASE_ANON_KEY);
+      console.log('Supabase client ready');
+    }
+  } catch(e) {
+    console.warn('Supabase init failed:', e);
+  }
+}
 
 async function dbSave(key, value) {
-  if (!_sb) return;
-  // Use a per-key timer so saves don't cancel each other
+  if (!_sb) { console.warn('dbSave: no Supabase client for key', key); return; }
   clearTimeout(_syncTimers[key]);
   _syncTimers[key] = setTimeout(async () => {
     try {
-      await _sb.from('rota_state').upsert({ key, value, updated_at: new Date().toISOString() });
-    } catch(e) { console.warn('Sync error:', e); }
+      const { error } = await _sb.from('rota_state').upsert({ key, value, updated_at: new Date().toISOString() });
+      if (error) { console.warn('Save error for', key, ':', error); }
+      else { console.log('Saved:', key); }
+    } catch(e) { console.warn('Sync error:', key, e); }
   }, 800);
 }
 
-// Save all app state to Supabase
 function saveAll() {
+  if (!_sb) { console.warn('saveAll: no Supabase client — changes not saved'); return; }
   dbSave('staff',   STAFF);
   dbSave('base',    BASE);
   dbSave('sOv',     sOv);
@@ -374,12 +378,10 @@ function saveAll() {
 
 // Load all state from Supabase on startup
 async function loadFromDB() {
+  initSB(); // ensure client is ready
   if (!_sb) {
-    // No database configured — run with demo data directly
     if (SUPABASE_URL === 'YOUR_SUPABASE_URL') showSetupBanner();
-    bH();
-    seed();
-    rw();
+    bH(); seed(); rw();
     return;
   }
   showLoader('Loading rota data...');
@@ -395,16 +397,15 @@ async function loadFromDB() {
     if (map.swpBrd) swpBrd = map.swpBrd;
     if (map.swpPnd) swpPnd = map.swpPnd;
     if (map.hol)    HOL    = map.hol;
-    bH(); // always ensure HOL entries exist for all staff
+    bH();
     if (!map.staff && !map.base) { seed(); saveAll(); }
   } catch(e) {
     console.warn('DB load failed, running offline:', e);
     showToastError('Database unavailable — running offline.');
-    bH();
-    seed();
+    bH(); seed();
   }
   hideLoader();
-  ws = gM(today); // always open on current week after load
+  ws = gM(today);
   rw();
 }
 
