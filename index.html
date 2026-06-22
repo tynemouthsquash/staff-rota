@@ -478,10 +478,10 @@ let STAFF=[
 const APIN='0000';
 
 let BASE=[
-  {day:0,s:'12:00',e:'18:30',staff:''},{day:0,s:'18:30',e:'23:30',staff:'Vicky'},
-  {day:1,s:'12:00',e:'18:00',staff:''},{day:1,s:'18:00',e:'23:30',staff:'Matthew'},
-  {day:2,s:'12:00',e:'18:30',staff:''},{day:2,s:'18:30',e:'23:30',staff:'Andrew'},
-  {day:3,s:'12:00',e:'18:30',staff:''},{day:3,s:'18:30',e:'23:30',staff:'Vicky'},
+  {day:0,s:'12:00',e:'18:30',staff:'Matthew'},{day:0,s:'18:30',e:'23:30',staff:'Vicky'},
+  {day:1,s:'12:00',e:'18:00',staff:'Matthew'},{day:1,s:'18:00',e:'23:30',staff:'Matthew'},
+  {day:2,s:'12:00',e:'18:30',staff:'Matthew'},{day:2,s:'18:30',e:'23:30',staff:'Andrew'},
+  {day:3,s:'12:00',e:'18:30',staff:'Matthew'},{day:3,s:'18:30',e:'23:30',staff:'Vicky'},
   {day:4,s:'12:00',e:'18:30',staff:'Kath'},{day:4,s:'18:30',e:'23:30',staff:'Claire'},
   {day:5,s:'09:00',e:'14:00',staff:'Kath'},{day:5,s:'14:00',e:'19:00',staff:'Emma'},{day:5,s:'19:00',e:'23:30',staff:'Claire'},
   {day:6,s:'10:00',e:'14:30',staff:'Claire'},{day:6,s:'14:30',e:'19:00',staff:'Emily'},{day:6,s:'19:00',e:'23:00',staff:'James'}
@@ -542,47 +542,12 @@ function rem(n){return+(tot(n)-((HOL[n]||{}).taken||0)).toFixed(1);}
 bH();
 
 function seed(){
-  const ah=(n,da,h,s)=>{
-    if(!HOL[n])return; // safety check — skip if staff member doesn't exist
-    const d=new Date(today);d.setDate(d.getDate()-da);
-    HOL[n].req.push({id:'req_'+n+'_'+da,date:`${d.getDate()} ${MON[d.getMonth()]}`,hours:h,shifts:'Historical',shiftKeys:[],status:s});
-    if(s==='approved')HOL[n].taken=+(HOL[n].taken+h).toFixed(1);
-  };
-  ah('Claire',21,30,'approved');ah('Claire',5,7.5,'pending');
-  ah('Kath',10,15,'approved');ah('Vicky',7,7.5,'approved');
-  ah('Matthew',2,7.5,'pending');ah('Emily',18,15,'approved');
-  if(HOL['James'])HOL['James'].upd.push({id:'upd_j1',date:'Today',hours:15,reason:'Family event',status:'pending',shifts:'This week',shiftKeys:[]});
-  // Seed sick leave for Matthew
-  initSick('Matthew');
-  const mattHrs=sh({s:'18:00',e:'23:30'});
-  for(let i=1;i<=3;i++){
-    const sickDate=new Date(today.getTime()-(i*7*864e5));
-    HOL['Matthew'].sick.push({id:'sk_demo_'+i,shiftId:null,date:sickDate.toLocaleDateString('en-GB'),hours:mattHrs,note:'Self-certified',status:'logged'});
-  }
-  HOL['Matthew'].sickHrsTotal=+(mattHrs*3).toFixed(2);
-  // Sunday 2-staff modification
-  const sun=new Date(ws);sun.setDate(sun.getDate()+6);
-  dOv[ddk(sun,6)]=[{s:'10:00',e:'17:00',staff:'Claire',type:'modified'},{s:'17:00',e:'23:00',staff:'James',type:'modified'}];
-  // Saturday AM covered by Emma
-  const sat=new Date(ws);sat.setDate(sat.getDate()+5);
-  const si=BASE.findIndex(b=>b.day===5&&b.s==='09:00');
-  if(si>=0)sOv[`${sat.toDateString()}-${si}`]={type:'covered',staff:'Emma',origStaff:'Kath'};
-  // Thursday eve needs cover
-  const thu=new Date(ws);thu.setDate(thu.getDate()+3);
-  const ti=BASE.findIndex(b=>b.day===3&&b.s==='18:30');
-  if(ti>=0)sOv[`${thu.toDateString()}-${ti}`]={type:'cover',staff:''};
-  // Wednesday Andrew holiday
-  const wed=new Date(ws);wed.setDate(wed.getDate()+2);
-  const wi=BASE.findIndex(b=>b.day===2&&b.s==='18:30');
-  if(wi>=0)sOv[`${wed.toDateString()}-${wi}`]={type:'hol',staff:'Andrew'};
-  // Friday Kath swap with 2 volunteers
-  const fri=new Date(ws);fri.setDate(fri.getDate()+4);
-  const fi=BASE.findIndex(b=>b.day===4&&b.s==='12:00');
-  if(fi>=0)swpBrd.push({id:'s1',shiftId:`${fri.toDateString()}-${fi}`,day:4,s:'12:00',e:'18:30',staff:'Kath',dateStr:`${fri.getDate()} ${MON[fri.getMonth()]}`,vols:[{name:'Emma',label:`Sat ${fmt('14:00')}–${fmt('19:00')}`},{name:'Matthew',label:`Tue ${fmt('18:00')}–${fmt('23:30')}`}]});
-  // Next week Vicky swap open
-  const nxt=new Date(ws);nxt.setDate(nxt.getDate()+7);
-  const ni=BASE.findIndex(b=>b.day===0&&b.s==='18:30');
-  if(ni>=0)swpBrd.push({id:'s2',shiftId:`${nxt.toDateString()}-${ni}`,day:0,s:'18:30',e:'23:30',staff:'Vicky',dateStr:`${nxt.getDate()} ${MON[nxt.getMonth()]}`,vols:[]});
+  // Clean initial state — reset everything to empty
+  sOv={};
+  dOv={};
+  swpBrd=[];
+  swpPnd=[];
+  // HOL already initialised cleanly by bH()
 }
 let eDraft={},eSelDate=null,eCalMo=new Date(today.getFullYear(),today.getMonth(),1);
 
@@ -1465,23 +1430,21 @@ function rLeave(){
   document.getElementById('apL').innerHTML=b;
 }
 function uH(n,v){if(!HOL[n])return;HOL[n].adj=+(v||0).toFixed(1);rLeave();rH();saveAll();}
-function apH(n,date){const r=HOL[n].req.find(x=>x.date===date);if(r)r.status='approved';rLeave();rH();saveAll();toast(`Leave approved for ${n}.`);}
+function apH(n,date){const r=HOL[n].req.find(x=>x.date===date);if(r)r.status='approved';rRequests();rLeave();rH();saveAll();toast(`Leave approved for ${n}.`);}
 function dcH(n,date){
   const r=HOL[n].req.find(x=>x.date===date);
   if(r){
     r.status='declined';
     HOL[n].taken=Math.max(0,+(HOL[n].taken-r.hours).toFixed(1));
-    // Unmark only the specific shifts from this request using stored keys
     if(r.shiftKeys&&r.shiftKeys.length){
       r.shiftKeys.forEach(k=>{if(sOv[k]&&sOv[k].type==='hol'&&sOv[k].staff===n)delete sOv[k];});
     } else {
-      // Fallback for older records without shiftKeys
       Object.keys(sOv).forEach(k=>{if(sOv[k].type==='hol'&&sOv[k].staff===n)delete sOv[k];});
     }
   }
-  rLeave();rH();rw();saveAll();toast(`Leave declined for ${n}. Hours returned.`);
+  rRequests();rLeave();rH();rw();saveAll();toast(`Leave declined for ${n}. Hours returned.`);
 }
-function apU(n,i){if(HOL[n].upd[i])HOL[n].upd[i].status='approved';rLeave();saveAll();toast(`Unpaid leave approved for ${n}.`);}
+function apU(n,i){if(HOL[n].upd[i])HOL[n].upd[i].status='approved';rRequests();rLeave();saveAll();toast(`Unpaid leave approved for ${n}.`);}
 function dcU(n,i){
   const r=HOL[n].upd[i];
   if(r){
@@ -1492,7 +1455,7 @@ function dcU(n,i){
       Object.keys(sOv).forEach(k=>{if(sOv[k].type==='unpaid'&&sOv[k].staff===n)delete sOv[k];});
     }
   }
-  rLeave();rw();saveAll();toast(`Unpaid leave declined for ${n}.`);
+  rRequests();rLeave();rw();saveAll();toast(`Unpaid leave declined for ${n}.`);
 }
 
 // SICK LEAVE
@@ -1679,8 +1642,8 @@ function rStaff(){
 function reassignBase(baseIdx,newStaff){
   if(baseIdx<0||baseIdx>=BASE.length)return;
   BASE[baseIdx].staff=newStaff||'';
-  bH();
-  rw();if(aOk){rH();rStaff();}
+  bH(); // recalculate HOL entries (cwh changes affect sick pay thresholds and leave allowances)
+  rw();if(aOk){rH();rLeave();rSick();rStaff();}
   saveAll();
   toast(`Rota updated: ${fmt(BASE[baseIdx].s)}–${fmt(BASE[baseIdx].e)} on ${DAYS[BASE[baseIdx].day]} now assigned to ${newStaff||'(unassigned)'}.`);
 }
