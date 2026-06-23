@@ -566,8 +566,8 @@ function rw(){
   document.getElementById('wklbl').textContent=wkL(ws);
   const wn=wkN(ws);document.getElementById('wknum').textContent=wn?`Payroll Week ${wn} (Fri–Thu)`:'';
   const shifts=getShifts();
-  // Count alerts across next 8 weeks for the pill
-  const rangeEnd8=new Date(today);rangeEnd8.setDate(rangeEnd8.getDate()+56);
+  // Count alerts across next 4 months for the pill
+  const rangeEnd8=new Date(today);rangeEnd8.setDate(rangeEnd8.getDate()+122);
   const allFwd=getShiftsForRange(today,rangeEnd8);
   const fwdUncov=allFwd.filter(s=>!s.staff||s.type==='cover');
   const fwdCover=allFwd.filter(s=>s.type==='hol'||s.type==='sick');
@@ -639,8 +639,8 @@ function getShiftsForRange(startDate,endDate){
 }
 
 function openAlerts(){
-  // Scan 8 weeks ahead from today
-  const rangeEnd=new Date(today);rangeEnd.setDate(rangeEnd.getDate()+56);
+  // Scan 4 months ahead from today
+  const rangeEnd=new Date(today);rangeEnd.setDate(rangeEnd.getDate()+122);
   const allShifts=getShiftsForRange(today,rangeEnd);
 
   const uncov=allShifts.filter(s=>!s.staff||s.type==='cover');
@@ -677,7 +677,7 @@ function openAlerts(){
       b+=`</div>`;
     });
   }
-  if(!b)b='<div style="font-size:12px;color:var(--muted);text-align:center;padding:20px">No upcoming alerts in the next 8 weeks</div>';
+  if(!b)b='<div style="font-size:12px;color:var(--muted);text-align:center;padding:20px">No upcoming alerts in the next 4 months</div>';
   document.getElementById('aBody').innerHTML=b;
   document.getElementById('ovA').classList.add('open');
 }
