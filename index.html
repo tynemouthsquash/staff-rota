@@ -1486,27 +1486,86 @@ function rSwaps(){rRequests();} // alias — swaps now shown in Requests tab
 
 // LEAVE ADMIN (allowances only — requests are in rRequests)
 function rLeave(){
-  let b=`<div class="slbl">Annual leave allowances <span style="font-size:9px;font-weight:400;text-transform:none;letter-spacing:0">(Calculated = weekly hrs × 4. Use the adjustment field to add or remove hours as needed.)</span></div>`;
+  let b=`<div class="slbl">Annual leave allowances</div>`;
+  b+=`<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Contracted leave allowance is calculated automatically from the default rota (contracted hrs × 4). Use the adjustment field for any additions or deductions. Taken hours can be manually corrected if needed.</div>`;
+
   STAFF.forEach(({name})=>{
-    const h=HOL[name]||{allowance:null,adj:0,taken:0};
-    const calcBase=+(cwhRaw(name)*4).toFixed(1);
-    const adj=h.adj||0;
-    const total=+(calcBase+adj).toFixed(1);
-    const rv=rem(name);
-    b+=`<div class="hrow">
-      <span style="min-width:65px;font-weight:700;font-size:12px">${name}</span>
-      <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Calculated</label>
-      <span style="font-size:11px;color:var(--muted);white-space:nowrap">${calcBase}h</span>
-      <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Adjustment</label>
-      <input type="number" class="hni" style="width:64px" value="${adj}" step="0.5" onchange="uH('${name}',parseFloat(this.value)||0)" title="Add or subtract hours from the calculated allowance"/>
-      <span style="font-size:11px;font-weight:700;color:var(--navy);white-space:nowrap">= ${total}h</span>
-      <span style="font-size:11px;font-weight:700;color:var(--muted);white-space:nowrap">Taken: ${(h.taken||0).toFixed(1)}h</span>
-      <span style="font-size:11px;font-weight:700;color:${rv<0?'var(--red)':'var(--green)'};white-space:nowrap">Rem: ${rv.toFixed(1)}h</span>
+    const h=HOL[name]||{adj:0,taken:0};
+    const contracted=+(cwhRaw(name)*4).toFixed(1);
+    const adj=+(h.adj||0).toFixed(1);
+    const total=+(contracted+adj).toFixed(1);
+    const taken=+(h.taken||0).toFixed(1);
+    const rv=+(total-taken).toFixed(1);
+
+    b+=`<div style="background:var(--surf);border:1px solid var(--border);border-radius:8px;padding:10px 13px;margin-bottom:8px">`;
+    b+=`<div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:9px">${name}</div>`;
+    b+=`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">`;
+
+    // Contracted allowance (read-only)
+    b+=`<div style="display:flex;flex-direction:column;gap:3px">
+      <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Contracted leave allowance</label>
+      <span style="font-size:14px;font-weight:800;color:var(--navy2)">${contracted}h</span>
     </div>`;
+
+    // Adjustment (editable)
+    b+=`<div style="display:flex;flex-direction:column;gap:3px">
+      <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Adjustment (+ / −)</label>
+      <input type="number" class="hni" style="width:70px" value="${adj}" step="0.5"
+        onchange="uH('${name}',parseFloat(this.value)||0)"
+        title="Add or subtract hours e.g. +7.5 for carried leave, -3.5 for a deduction"/>
+    </div>`;
+
+    // Total allowance
+    b+=`<div style="display:flex;flex-direction:column;gap:3px">
+      <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Total allowance</label>
+      <span style="font-size:14px;font-weight:800;color:var(--navy)" id="leaveTotal_${name}">${total}h</span>
+    </div>`;
+
+    // Taken (editable)
+    b+=`<div style="display:flex;flex-direction:column;gap:3px">
+      <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Hours taken</label>
+      <input type="number" class="hni" style="width:70px" value="${taken}" step="0.5" min="0"
+        onchange="uHTaken('${name}',parseFloat(this.value)||0)"
+        title="Manually adjust hours taken if needed"/>
+    </div>`;
+
+    // Remaining
+    b+=`<div style="display:flex;flex-direction:column;gap:3px">
+      <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Remaining</label>
+      <span style="font-size:14px;font-weight:800;color:${rv<0?'var(--red)':rv<total*0.25?'var(--amb)':'var(--green)'}" id="leaveRem_${name}">${rv}h</span>
+    </div>`;
+
+    b+=`</div></div>`;
   });
+
   document.getElementById('apL').innerHTML=b;
 }
-function uH(n,v){if(!HOL[n])return;HOL[n].adj=+(v||0).toFixed(1);rLeave();rH();saveAll();}
+
+function uH(n,v){
+  if(!HOL[n])return;
+  HOL[n].adj=+(v||0).toFixed(1);
+  // Update totals live without full re-render
+  const contracted=+(cwhRaw(n)*4).toFixed(1);
+  const total=+(contracted+HOL[n].adj).toFixed(1);
+  const rv=+(total-(HOL[n].taken||0)).toFixed(1);
+  const tEl=document.getElementById(`leaveTotal_${n}`);
+  const rEl=document.getElementById(`leaveRem_${n}`);
+  if(tEl)tEl.textContent=total+'h';
+  if(rEl){rEl.textContent=rv+'h';rEl.style.color=rv<0?'var(--red)':rv<total*0.25?'var(--amb)':'var(--green)';}
+  rH();saveAll();
+}
+
+function uHTaken(n,v){
+  if(!HOL[n])return;
+  HOL[n].taken=Math.max(0,+(v||0).toFixed(1));
+  // Update remaining live
+  const contracted=+(cwhRaw(n)*4).toFixed(1);
+  const total=+(contracted+(HOL[n].adj||0)).toFixed(1);
+  const rv=+(total-HOL[n].taken).toFixed(1);
+  const rEl=document.getElementById(`leaveRem_${n}`);
+  if(rEl){rEl.textContent=rv+'h';rEl.style.color=rv<0?'var(--red)':rv<total*0.25?'var(--amb)':'var(--green)';}
+  rH();saveAll();
+}
 function apH(n,date){const r=HOL[n].req.find(x=>x.date===date);if(r)r.status='approved';rRequests();rLeave();rH();saveAll();toast(`Leave approved for ${n}.`);}
 function dcH(n,date){
   const r=HOL[n].req.find(x=>x.date===date);
