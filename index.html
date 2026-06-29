@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota App v14.82 -->
+<!-- TSC Staff Rota App v14.83 -->
 <!-- Last updated: June 2026 -->
 <html lang="en">
 <head>
@@ -1535,7 +1535,6 @@ function rH(){
   let cards='',rows='';
   STAFF.forEach(({name})=>{
     const h=hrs[name],c=cnt[name];if(h===0&&!HOL[name])return;const r=rem(name);
-    cards+=`<div class="rc"><div class="rcn">${name}</div><div class="rch">${h.toFixed(1)}</div><div class="rcl">hrs this week</div><div style="font-size:10px;color:var(--muted);margin-top:2px">${c} shift${c!==1?'s':''}</div></div>`;
     // Shift notes: holiday hours taken this week + sick hours this week
     const wkStart=ws,wkEnd=new Date(ws.getTime()+7*864e5);
     const holHrsWk=(HOL[name]&&HOL[name].req||[]).filter(req=>req.status!=='declined').reduce((a,req)=>{
@@ -1551,6 +1550,8 @@ function rH(){
         try{const parts=k.split('-');const d=new Date(parts.slice(0,-1).join('-'));return(d>=wkStart&&d<wkEnd)?b+sh(BASE[parseInt(parts[parts.length-1])]||{s:'12:00',e:'18:00'}):b;}catch(e){return b;}
       },0);
     },0);
+    // Card — include holiday hours if applicable (for payroll)
+    cards+=`<div class="rc"><div class="rcn">${name}</div><div class="rch">${h.toFixed(1)}</div><div class="rcl">hrs this week</div><div style="font-size:10px;color:var(--muted);margin-top:2px">${c} shift${c!==1?'s':''}${holHrsWk>0?`<br><span style="color:var(--pur);font-weight:700">${holHrsWk.toFixed(1)}h holiday</span>`:''}</div></div>`;
     let notes=[];
     if(holHrsWk>0)notes.push(`${holHrsWk.toFixed(1)}h holiday`);
     if(sickHrsWk>0)notes.push(`${sickHrsWk.toFixed(1)}h sick`);
