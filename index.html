@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota App v14.2 -->
+<!-- TSC Staff Rota App v14.3 -->
 <!-- Last updated: June 2026 -->
 <html lang="en">
 <head>
@@ -1049,11 +1049,27 @@ function openSh(id){
       b+=`<div class="mrow"><span class="mlbl">Time</span><span class="mval">${fmt(s.s||s.start)} – ${fmt(s.e||s.end)}</span></div>`;
       b+=`<div class="mrow"><span class="mlbl">Hours</span><span class="mval">${sh(s).toFixed(1)} hrs</span></div>`;
       if(s.type==='modified')b+=`<div class="mrow"><span class="mlbl">Note</span><span class="mval" style="color:var(--amb)">Modified schedule</span></div>`;
-      if(s.type==='unpaid')b+=`<div class="mrow"><span class="mlbl">Note</span><span class="mval" style="color:var(--pur)">On unpaid leave</span></div>`;
-      if(s.extraStaff&&s.extraStaff.length)b+=`<div class="mrow"><span class="mlbl">Extra staff</span><span class="mval">${s.extraStaff.join(', ')}</span></div>`;
-      b+=`<button class="mbg" style="margin-top:9px" onclick="openAddSt('${id}')">+ Add / Replace Staff</button>`;
-      // Show reset button if this shift has any override applied
-      if(sOv[id]){b+=`<button class="rsbtn" style="margin-top:5px" onclick="resetShiftToDefault('${id}')">&#8635; Reset to default rota</button>`;}
+      if(s.type==='unpaid'){
+        b+=`<div style="background:var(--purbg);border:1px solid var(--purbrd);border-radius:6px;padding:9px 11px;font-size:12px;color:var(--pur);margin-bottom:12px;font-weight:600">&#128197; ${s.staff} is on unpaid leave</div>`;
+        b+=`<div style="background:var(--surf);border:1px solid var(--border);border-radius:7px;padding:10px 12px;margin-bottom:12px">`;
+        b+=`<div class="mrow" style="padding:5px 0"><span class="mlbl">Scheduled staff</span><span class="mval" style="color:var(--navy2)">${s.staff}</span></div>`;
+        b+=`<div class="mrow" style="padding:5px 0"><span class="mlbl">Time</span><span class="mval">${fmt(s.s||s.start)} – ${fmt(s.e||s.end)}</span></div>`;
+        b+=`<div class="mrow" style="padding:5px 0;border-bottom:none"><span class="mlbl">Hours</span><span class="mval">${sh(s).toFixed(1)} hrs</span></div>`;
+        b+=`</div>`;
+        b+=`<div style="background:var(--rdbg);border:1px solid var(--rdbrd);border-radius:6px;padding:8px;font-size:12px;color:var(--red);margin-bottom:9px;font-weight:600">This shift needs covering</div>`;
+        b+=`<div class="mf"><label>Your name</label><select id="covSel">${STAFF.map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
+        b+=`<div class="mf"><label>PIN</label><div class="prow" id="covPin"></div></div>`;
+        b+=`<button class="mbgn" onclick="doCovHol('${id}','${s.staff}')">Confirm Cover</button>`;
+        setTimeout(()=>bP('covPin',null),80);
+      } else {
+        b+=`<div class="mrow"><span class="mlbl">Staff</span><span class="mval">${s.staff}</span></div>`;
+        b+=`<div class="mrow"><span class="mlbl">Time</span><span class="mval">${fmt(s.s||s.start)} – ${fmt(s.e||s.end)}</span></div>`;
+        b+=`<div class="mrow"><span class="mlbl">Hours</span><span class="mval">${sh(s).toFixed(1)} hrs</span></div>`;
+        if(s.type==='modified')b+=`<div class="mrow"><span class="mlbl">Note</span><span class="mval" style="color:var(--amb)">Modified schedule</span></div>`;
+        if(s.extraStaff&&s.extraStaff.length)b+=`<div class="mrow"><span class="mlbl">Extra staff</span><span class="mval">${s.extraStaff.join(', ')}</span></div>`;
+        b+=`<button class="mbg" style="margin-top:9px" onclick="openAddSt('${id}')">+ Add / Replace Staff</button>`;
+        if(sOv[id]){b+=`<button class="rsbtn" style="margin-top:5px" onclick="resetShiftToDefault('${id}')">&#8635; Reset to default rota</button>`;}
+      }
     }
   }
 
@@ -1073,38 +1089,38 @@ function doCov(id){
 // Reset a single shift override back to the base rota
 // Cancels any matching pending/approved leave request and refunds the hours
 function resetShiftToDefault(id){
-  const s=getShifts().find(x=>x.id===id);
-  if(s&&(s.type==='hol'||s.type==='unpaid')){
-    STAFF.forEach(({name})=>{
-      const h=HOL[name];if(!h)return;
+  const ov=sOv[id];
+  // Determine which staff member had leave on this shift
+  // Could be type 'hol', 'unpaid', or 'covered' where origStaff had leave
+  const leaveStaff=ov?(ov.type==='hol'||ov.type==='unpaid'?ov.staff:ov.origStaff||null):null;
+
+  if(leaveStaff){
+    const shiftBase=BASE.find((b,bi)=>id.endsWith(`-${bi}`));
+    const shiftHrs=shiftBase?sh(shiftBase):0;
+    const h=HOL[leaveStaff];
+    if(h){
       // Annual leave requests
       (h.req||[]).forEach(r=>{
         if((r.status==='pending'||r.status==='approved')&&r.shiftKeys&&r.shiftKeys.includes(id)){
-          // Refund just the hours for this one shift
-          const shiftBase=BASE.find((b,bi)=>id.endsWith(`-${bi}`));
-          const shiftHrs=shiftBase?sh(shiftBase):0;
           h.taken=Math.max(0,+(h.taken-shiftHrs).toFixed(1));
-          // Remove this shift from the request
           r.shiftKeys=r.shiftKeys.filter(k=>k!==id);
           r.hours=Math.max(0,+(r.hours-shiftHrs).toFixed(1));
-          // If no shifts remain, cancel the whole request
           if(!r.shiftKeys.length)r.status='cancelled';
-          toast(`Leave cancelled for ${name} — ${shiftHrs.toFixed(1)}h refunded.`);
+          toast(`Leave cancelled for ${leaveStaff} — ${shiftHrs.toFixed(1)}h refunded.`);
         }
       });
       // Unpaid leave requests
       (h.upd||[]).forEach(r=>{
         if((r.status==='pending'||r.status==='approved')&&r.shiftKeys&&r.shiftKeys.includes(id)){
-          const shiftBase=BASE.find((b,bi)=>id.endsWith(`-${bi}`));
-          const shiftHrs=shiftBase?sh(shiftBase):0;
           r.shiftKeys=r.shiftKeys.filter(k=>k!==id);
           r.hours=Math.max(0,+(r.hours-shiftHrs).toFixed(1));
           if(!r.shiftKeys.length)r.status='cancelled';
-          toast(`Unpaid leave cancelled for ${name}.`);
+          toast(`Unpaid leave cancelled for ${leaveStaff}.`);
         }
       });
-    });
+    }
   }
+
   if(sOv[id])delete sOv[id];
   cm('ovSh');rw();if(aOk){rRequests();rLeave();rH();}saveAll();
   toast('Shift reset to default rota.');
@@ -1114,7 +1130,8 @@ function doCovHol(id,origStaff){
   if(staff&&pin.length===4&&pin!==staff.pin){toast('Incorrect PIN');clP('covPin');return;}
   if(name===origStaff){toast('You cannot cover your own shift');return;}
   sOv[id]=Object.assign(sOv[id]||{},{staff:name,type:'covered',origStaff:origStaff});
-  cm('ovSh');rw();saveAll();toast(`${name} confirmed as cover.`);
+  autoApproveLeaveForShift(id);
+  cm('ovSh');rw();if(aOk){rRequests();rLeave();}saveAll();toast(`${name} confirmed as cover.`);
 }
 
 function openAddSt(id){
@@ -1549,38 +1566,62 @@ function rRequests(){
   });
 
   let b='';
-  if(!items.length){
+  const pending=items.filter(x=>x.r?x.r.status==='pending':x.sw?true:false);
+  const resolved=items.filter(x=>x.r&&x.r.status!=='pending');
+
+  if(!pending.length&&!resolved.length){
     b='<div style="font-size:12px;color:var(--muted);padding:16px 0">No requests on record.</div>';
     document.getElementById('apR').innerHTML=b;return;
   }
 
-  let pendingShown=false,resolvedShown=false;
-  items.forEach(item=>{
-    if(item.type==='annual'){
-      const{name,r}=item;
-      const isPending=r.status==='pending';
-      if(isPending&&!pendingShown){b+=`<div class="slbl">Pending requests</div>`;pendingShown=true;}
-      if(!isPending&&!resolvedShown){b+=`<div class="slbl" style="margin-top:12px">Resolved requests</div>`;resolvedShown=true;}
-      const c=r.status==='approved'?'var(--green)':r.status==='declined'?'var(--red)':'var(--amb)';
-      const cl=r.status==='approved'?'grn':r.status==='declined'?'red':'amb';
-      const isApproved=r.status==='approved';
-      const canCancel=isPending||isApproved;
-      b+=`<div class="er ${cl}"><div><div class="elbl" style="color:${c}">${name} — Annual leave · ${r.status}</div><div class="edet">${r.date} · ${r.hours.toFixed(1)} hrs</div>${r.shifts?`<div class="edet" style="margin-top:2px;font-size:10px">Shifts: ${r.shifts}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">${isPending?`<button class="sbtn sg" onclick="apH('${name}','${r.date}')">Approve</button><button class="sbtn sr" onclick="dcH('${name}','${r.date}')">Decline</button>`:isApproved?`<button class="sbtn sr" onclick="adminCancelLeave('${name}','annual','${r.id}')">Cancel</button>`:''}<span style="font-size:10px;font-weight:700;color:${c}">${r.status}</span></div></div>`;
-    } else if(item.type==='unpaid'){
-      const{name,r,idx}=item;
-      const isPending=r.status==='pending';
-      if(isPending&&!pendingShown){b+=`<div class="slbl">Pending requests</div>`;pendingShown=true;}
-      if(!isPending&&!resolvedShown){b+=`<div class="slbl" style="margin-top:12px">Resolved requests</div>`;resolvedShown=true;}
-      const c=r.status==='approved'?'var(--green)':r.status==='declined'?'var(--red)':'var(--pur)';
-      const cl=r.status==='approved'?'grn':r.status==='declined'?'red':'pur';
-      const isApprovedU=r.status==='approved';
-      b+=`<div class="er ${cl}"><div><div class="elbl" style="color:${c}">${name} — Unpaid leave · ${r.status}</div><div class="edet">${r.date} · ${r.hours.toFixed(1)} hrs${r.reason?` · ${r.reason}`:''}</div>${r.shifts?`<div class="edet" style="margin-top:2px;font-size:10px">Shifts: ${r.shifts}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">${isPending?`<button class="sbtn sg" onclick="apU('${name}',${idx})">Approve</button><button class="sbtn sr" onclick="dcU('${name}',${idx})">Decline</button>`:isApprovedU?`<button class="sbtn sr" onclick="adminCancelLeave('${name}','unpaid','${r.id}')">Cancel</button>`:''}<span style="font-size:10px;font-weight:700;color:${c}">${r.status}</span></div></div>`;
-    } else if(item.type==='swap'){
-      const{sw}=item;
-      if(!pendingShown){b+=`<div class="slbl">Pending requests</div>`;pendingShown=true;}
-      b+=`<div class="er gold"><div><div class="elbl" style="color:var(--amb)">Swap offered — ${sw.staff}</div><div class="edet">${sw.dateStr} · ${fmt(sw.s)}–${fmt(sw.e)}</div>${sw.vols&&sw.vols.length?`<div class="edet" style="margin-top:2px;font-size:10px">Offers: ${sw.vols.map(v=>`${v.name} (${v.label})`).join(' · ')}</div>`:''}</div><span style="font-size:10px;font-weight:700;color:var(--amb)">${sw.vols&&sw.vols.length?sw.vols.length+' offer(s)':'Open'}</span></div>`;
+  // Pending requests
+  if(pending.length){
+    b+=`<div class="slbl">Pending requests (${pending.length})</div>`;
+    pending.forEach(item=>{
+      if(item.type==='annual'){
+        const{name,r}=item;
+        b+=`<div class="er amb"><div><div class="elbl" style="color:var(--amb)">${name} — Annual leave · pending</div><div class="edet">${r.date} · ${r.hours.toFixed(1)} hrs</div>${r.shifts?`<div class="edet" style="margin-top:2px;font-size:10px">Shifts: ${r.shifts}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end"><button class="sbtn sg" onclick="apH('${name}','${r.id}')">Approve</button><button class="sbtn sr" onclick="dcH('${name}','${r.id}')">Decline</button></div></div>`;
+      } else if(item.type==='unpaid'){
+        const{name,r}=item;
+        b+=`<div class="er pur"><div><div class="elbl" style="color:var(--pur)">${name} — Unpaid leave · pending</div><div class="edet">${r.date} · ${r.hours.toFixed(1)} hrs${r.reason?` · ${r.reason}`:''}</div>${r.shifts?`<div class="edet" style="margin-top:2px;font-size:10px">Shifts: ${r.shifts}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end"><button class="sbtn sg" onclick="apU('${name}','${r.id}')">Approve</button><button class="sbtn sr" onclick="dcU('${name}','${r.id}')">Decline</button></div></div>`;
+      } else if(item.type==='swap'){
+        const{sw}=item;
+        b+=`<div class="er gold"><div><div class="elbl" style="color:var(--amb)">Swap offered — ${sw.staff}</div><div class="edet">${sw.dateStr} · ${fmt(sw.s)}–${fmt(sw.e)}</div>${sw.vols&&sw.vols.length?`<div class="edet" style="margin-top:2px;font-size:10px">Offers: ${sw.vols.map(v=>`${v.name} (${v.label})`).join(' · ')}</div>`:''}</div><span style="font-size:10px;font-weight:700;color:var(--amb)">${sw.vols&&sw.vols.length?sw.vols.length+' offer(s)':'Open'}</span></div>`;
+      }
+    });
+  } else {
+    b+=`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">No pending requests.</div>`;
+  }
+
+  // Resolved section — collapsible
+  if(resolved.length){
+    const showResolved=_resolvedVisible;
+    b+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;margin-bottom:6px">`;
+    b+=`<div class="slbl" style="margin:0">Resolved requests (${resolved.length})</div>`;
+    b+=`<div style="display:flex;gap:6px">`;
+    b+=`<button class="sbtn sa" onclick="toggleResolved()" id="_resolvedToggle">${showResolved?'Hide ▲':'Show ▼'}</button>`;
+    b+=`<button class="sbtn sr" onclick="clearResolved()">Clear all</button>`;
+    b+=`</div></div>`;
+    if(showResolved){
+      b+=`<div id="_resolvedOpen">`;
+      resolved.forEach(item=>{
+        if(item.type==='annual'){
+          const{name,r}=item;
+          const c=r.status==='approved'?'var(--green)':r.status==='declined'?'var(--red)':'var(--muted)';
+          const cl=r.status==='approved'?'grn':r.status==='declined'?'red':'amb';
+          const isApproved=r.status==='approved';
+          b+=`<div class="er ${cl}"><div><div class="elbl" style="color:${c}">${name} — Annual leave · ${r.status}</div><div class="edet">${r.date} · ${r.hours.toFixed(1)} hrs</div>${r.shifts?`<div class="edet" style="margin-top:2px;font-size:10px">Shifts: ${r.shifts}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">${isApproved?`<button class="sbtn sr" onclick="adminCancelLeave('${name}','annual','${r.id}')">Cancel</button>`:''}<span style="font-size:10px;font-weight:700;color:${c}">${r.status}</span></div></div>`;
+        } else if(item.type==='unpaid'){
+          const{name,r}=item;
+          const c=r.status==='approved'?'var(--green)':r.status==='declined'?'var(--red)':'var(--muted)';
+          const cl=r.status==='approved'?'grn':r.status==='declined'?'red':'pur';
+          const isApprovedU=r.status==='approved';
+          b+=`<div class="er ${cl}"><div><div class="elbl" style="color:${c}">${name} — Unpaid leave · ${r.status}</div><div class="edet">${r.date} · ${r.hours.toFixed(1)} hrs${r.reason?` · ${r.reason}`:''}</div>${r.shifts?`<div class="edet" style="margin-top:2px;font-size:10px">Shifts: ${r.shifts}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">${isApprovedU?`<button class="sbtn sr" onclick="adminCancelLeave('${name}','unpaid','${r.id}')">Cancel</button>`:''}<span style="font-size:10px;font-weight:700;color:${c}">${r.status}</span></div></div>`;
+        }
+      });
+      b+=`</div>`;
     }
-  });
+  }
 
   document.getElementById('apR').innerHTML=b;
 }
@@ -1593,6 +1634,23 @@ function parseSortDate(key){
 }
 
 function rSwaps(){rRequests();} // alias — swaps now shown in Requests tab
+
+let _resolvedVisible=false;
+function toggleResolved(){
+  _resolvedVisible=!_resolvedVisible;
+  // Re-render to show/hide — use a sentinel element check
+  rRequests();
+}
+function clearResolved(){
+  // Remove all non-pending leave requests from HOL
+  STAFF.forEach(({name})=>{
+    const h=HOL[name];if(!h)return;
+    if(h.req)h.req=h.req.filter(r=>r.status==='pending');
+    if(h.upd)h.upd=h.upd.filter(r=>r.status==='pending');
+  });
+  _resolvedVisible=false;
+  rRequests();rLeave();rH();saveAll();toast('Resolved requests cleared.');
+}
 
 // LEAVE ADMIN (allowances only — requests are in rRequests)
 function rLeave(){
@@ -1692,9 +1750,9 @@ function uHTaken(n,v){
   if(rEl){rEl.textContent=rv+'h';rEl.style.color=rv<0?'var(--red)':rv<total*0.25?'var(--amb)':'var(--green)';}
   rH();saveAll();
 }
-function apH(n,date){const r=HOL[n].req.find(x=>x.date===date);if(r)r.status='approved';rRequests();rLeave();rH();saveAll();toast(`Leave approved for ${n}.`);}
-function dcH(n,date){
-  const r=HOL[n].req.find(x=>x.date===date);
+function apH(n,reqId){const r=HOL[n].req.find(x=>x.id===reqId);if(r)r.status='approved';rRequests();rLeave();rH();saveAll();toast(`Leave approved for ${n}.`);}
+function dcH(n,reqId){
+  const r=HOL[n].req.find(x=>x.id===reqId);
   if(r){
     r.status='declined';
     HOL[n].taken=Math.max(0,+(HOL[n].taken-r.hours).toFixed(1));
@@ -1706,9 +1764,9 @@ function dcH(n,date){
   }
   rRequests();rLeave();rH();rw();saveAll();toast(`Leave declined for ${n}. Hours returned.`);
 }
-function apU(n,i){if(HOL[n].upd[i])HOL[n].upd[i].status='approved';rRequests();rLeave();saveAll();toast(`Unpaid leave approved for ${n}.`);}
-function dcU(n,i){
-  const r=HOL[n].upd[i];
+function apU(n,reqId){const r=HOL[n].upd.find(x=>x.id===reqId);if(r)r.status='approved';rRequests();rLeave();saveAll();toast(`Unpaid leave approved for ${n}.`);}
+function dcU(n,reqId){
+  const r=HOL[n].upd.find(x=>x.id===reqId);
   if(r){
     r.status='declined';
     if(r.shiftKeys&&r.shiftKeys.length){
