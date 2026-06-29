@@ -540,7 +540,7 @@ let ws=gM(today),dOv={},sOv={},swpBrd=[],swpPnd=[];
 let HOL={};
 
 function bH(){STAFF.forEach(({name})=>{if(!HOL[name]){HOL[name]={adj:0,taken:0,req:[],upd:[]};} });}
-function tot(n){const h=HOL[n]||{};return+(cwhRaw(n)*4+(h.adjBaked||0)+(h.adj||0)).toFixed(1);}
+function tot(n){const h=HOL[n]||{};return+(cwhRaw(n)*4+(h.adj||0)).toFixed(1);}
 function rem(n){return+(tot(n)-((HOL[n]||{}).taken||0)).toFixed(1);}
 bH();
 
@@ -1016,35 +1016,8 @@ function doCov(id){
 
 // Reset a single shift override back to the base rota
 function resetShiftToDefault(id){
-  const s=getShifts().find(x=>x.id===id);
-  // If this was a holiday or unpaid shift, find and cancel the matching leave request
-  if(s&&(s.type==='hol'||s.type==='unpaid')){
-    STAFF.forEach(({name})=>{
-      const h=HOL[name];if(!h)return;
-      // Check annual leave requests
-      (h.req||[]).forEach(r=>{
-        if((r.status==='pending'||r.status==='approved')&&r.shiftKeys&&r.shiftKeys.includes(id)){
-          const wasApproved=r.status==='approved';
-          r.status='cancelled';
-          // Refund hours only if it was already deducted
-          if(wasApproved||r.status==='pending'){
-            h.taken=Math.max(0,+(h.taken-r.hours).toFixed(1));
-          }
-          toast(`Leave request for ${name} cancelled — ${r.hours.toFixed(1)}h refunded.`);
-        }
-      });
-      // Check unpaid leave requests
-      (h.upd||[]).forEach(r=>{
-        if((r.status==='pending'||r.status==='approved')&&r.shiftKeys&&r.shiftKeys.includes(id)){
-          r.status='cancelled';
-          toast(`Unpaid leave request for ${name} cancelled.`);
-        }
-      });
-    });
-  }
   if(sOv[id])delete sOv[id];
-  cm('ovSh');rw();if(aOk){rRequests();rLeave();rH();}saveAll();
-  toast('Shift reset to default rota.');
+  cm('ovSh');rw();saveAll();toast('Shift reset to default rota.');
 }
 function doCovHol(id,origStaff){
   const name=document.getElementById('covSel').value;const staff=STAFF.find(s=>s.name===name);const pin=gP('covPin');
@@ -1514,14 +1487,13 @@ function rSwaps(){rRequests();} // alias — swaps now shown in Requests tab
 // LEAVE ADMIN (allowances only — requests are in rRequests)
 function rLeave(){
   let b=`<div class="slbl">Annual leave allowances</div>`;
-  b+=`<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Contracted leave allowance is calculated automatically from the default rota (contracted hrs × 4). Use the adjustment field for any additions or deductions. Click <strong>Save Adjustments</strong> to apply them permanently and reset to zero.</div>`;
+  b+=`<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Contracted leave allowance is calculated automatically from the default rota (contracted hrs × 4). Use the adjustment field for any additions or deductions. Taken hours can be manually corrected if needed.</div>`;
 
   STAFF.forEach(({name})=>{
     const h=HOL[name]||{adj:0,taken:0};
     const contracted=+(cwhRaw(name)*4).toFixed(1);
-    const adjBaked=+(h.adjBaked||0).toFixed(1);
     const adj=+(h.adj||0).toFixed(1);
-    const total=+(contracted+adjBaked+adj).toFixed(1);
+    const total=+(contracted+adj).toFixed(1);
     const taken=+(h.taken||0).toFixed(1);
     const rv=+(total-taken).toFixed(1);
 
@@ -1529,24 +1501,27 @@ function rLeave(){
     b+=`<div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:9px">${name}</div>`;
     b+=`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">`;
 
+    // Contracted allowance (read-only)
     b+=`<div style="display:flex;flex-direction:column;gap:3px">
       <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Contracted leave allowance</label>
-      <span style="font-size:14px;font-weight:800;color:var(--navy2)">${contracted}h${adjBaked!==0?`<span style="font-size:10px;color:var(--amb);font-weight:700;margin-left:5px">${adjBaked>0?'+':''}${adjBaked}h saved</span>`:''}
-      </span>
+      <span style="font-size:14px;font-weight:800;color:var(--navy2)">${contracted}h</span>
     </div>`;
 
+    // Adjustment (editable)
     b+=`<div style="display:flex;flex-direction:column;gap:3px">
       <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Adjustment (+ / −)</label>
-      <input type="number" class="hni" style="width:70px" value="${adj}" step="0.5" id="adj_${name}"
+      <input type="number" class="hni" style="width:70px" value="${adj}" step="0.5"
         onchange="uH('${name}',parseFloat(this.value)||0)"
-        title="Add or subtract hours. Use Save Adjustments to apply permanently."/>
+        title="Add or subtract hours e.g. +7.5 for carried leave, -3.5 for a deduction"/>
     </div>`;
 
+    // Total allowance
     b+=`<div style="display:flex;flex-direction:column;gap:3px">
       <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Total allowance</label>
       <span style="font-size:14px;font-weight:800;color:var(--navy)" id="leaveTotal_${name}">${total}h</span>
     </div>`;
 
+    // Taken (editable)
     b+=`<div style="display:flex;flex-direction:column;gap:3px">
       <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Hours taken</label>
       <input type="number" class="hni" style="width:70px" value="${taken}" step="0.5" min="0"
@@ -1554,23 +1529,13 @@ function rLeave(){
         title="Manually adjust hours taken if needed"/>
     </div>`;
 
+    // Remaining
     b+=`<div style="display:flex;flex-direction:column;gap:3px">
       <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Remaining</label>
       <span style="font-size:14px;font-weight:800;color:${rv<0?'var(--red)':rv<total*0.25?'var(--amb)':'var(--green)'}" id="leaveRem_${name}">${rv}h</span>
     </div>`;
 
-    b+=`</div>`;
-
-    // Save Adjustments button — only show if there's a non-zero adjustment
-    if(adj!==0){
-      b+=`<div style="margin-top:10px">
-        <button class="sbtn sg" onclick="saveAdj('${name}')" style="font-size:11px;padding:5px 12px">
-          &#10003; Save Adjustment (${adj>0?'+':''}${adj}h → rolls into total, resets to 0)
-        </button>
-      </div>`;
-    }
-
-    b+=`</div>`;
+    b+=`</div></div>`;
   });
 
   document.getElementById('apL').innerHTML=b;
@@ -1579,8 +1544,9 @@ function rLeave(){
 function uH(n,v){
   if(!HOL[n])return;
   HOL[n].adj=+(v||0).toFixed(1);
+  // Update totals live without full re-render
   const contracted=+(cwhRaw(n)*4).toFixed(1);
-  const total=+(contracted+(HOL[n].adjBaked||0)+HOL[n].adj).toFixed(1);
+  const total=+(contracted+HOL[n].adj).toFixed(1);
   const rv=+(total-(HOL[n].taken||0)).toFixed(1);
   const tEl=document.getElementById(`leaveTotal_${n}`);
   const rEl=document.getElementById(`leaveRem_${n}`);
@@ -1589,18 +1555,7 @@ function uH(n,v){
   rH();saveAll();
 }
 
-function saveAdj(n){
-  if(!HOL[n])return;
-  const contracted=+(cwhRaw(n)*4).toFixed(1);
-  const adj=+(HOL[n].adj||0).toFixed(1);
-  if(adj===0){toast('No adjustment to save');return;}
-  // Roll adjustment into a permanent record — we store it as a baked offset
-  // so the contracted calc stays clean. We use adjBaked to track rolled-in amounts.
-  HOL[n].adjBaked=+((HOL[n].adjBaked||0)+adj).toFixed(1);
-  HOL[n].adj=0;
-  rLeave();rH();saveAll();
-  toast(`Adjustment of ${adj>0?'+':''}${adj}h saved for ${n}. Total allowance is now ${(contracted+HOL[n].adjBaked).toFixed(1)}h.`);
-}
+function uHTaken(n,v){
   if(!HOL[n])return;
   HOL[n].taken=Math.max(0,+(v||0).toFixed(1));
   // Update remaining live
