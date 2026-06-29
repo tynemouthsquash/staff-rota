@@ -1,4 +1,6 @@
 <!DOCTYPE html>
+<!-- TSC Staff Rota App v14.2 -->
+<!-- Last updated: June 2026 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -540,7 +542,7 @@ let ws=gM(today),dOv={},sOv={},swpBrd=[],swpPnd=[];
 let HOL={};
 
 function bH(){STAFF.forEach(({name})=>{if(!HOL[name]){HOL[name]={adj:0,taken:0,req:[],upd:[]};} });}
-function tot(n){const h=HOL[n]||{};return+(cwhRaw(n)*4+(h.adj||0)).toFixed(1);}
+function tot(n){const h=HOL[n]||{};return+(cwhRaw(n)*4+(h.adjBaked||0)+(h.adj||0)).toFixed(1);}
 function rem(n){return+(tot(n)-((HOL[n]||{}).taken||0)).toFixed(1);}
 bH();
 
@@ -831,9 +833,63 @@ function openDash(name){
     });
   }
 
-  b+=`<div class="slbl">My shifts this week</div>`;
-  if(!myS.length)b+=`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">No shifts this week.</div>`;
-  myS.forEach(s=>{b+=`<div class="mrow"><div><div style="font-size:12px;font-weight:700">${DAYS[s.day]}</div><div style="font-size:10px;color:var(--muted)">${fmt(s.s||s.start)} – ${fmt(s.e||s.end)}</div></div><div style="font-size:14px;font-weight:800;color:var(--navy)">${sh(s).toFixed(1)}h</div></div>`;});
+  b+=`<div class="slbl">My shifts — next 7 days</div>`;
+  // Always use today's date range, not the currently selected rota week
+  const next7end=new Date(today);next7end.setDate(next7end.getDate()+7);
+  const upcoming7=getShiftsForRange(today,next7end).filter(s=>s.staff===name);
+  if(!upcoming7.length)b+=`<div style="font-size:12px;color:var(--muted);margin-bottom:8px">No shifts in the next 7 days.</div>`;
+  upcoming7.forEach(s=>{
+    const dt=s._date;
+    const di=dt.getDay()===0?6:dt.getDay()-1;
+    b+=`<div class="mrow"><div><div style="font-size:12px;font-weight:700">${DAYS[di]} ${dt.getDate()} ${MON[dt.getMonth()]}</div><div style="font-size:10px;color:var(--muted)">${fmt(s.s||s.start)} – ${fmt(s.e||s.end)}</div></div><div style="font-size:14px;font-weight:800;color:var(--navy)">${sh(s).toFixed(1)}h</div></div>`;
+  });
+
+  // Upcoming leave overview
+  const allLeaveReqs=(hol&&hol.req||[]).filter(r=>r.status!=='cancelled'&&r.status!=='declined');
+  const allUnpaidReqs=(hol&&hol.upd||[]).filter(r=>r.status!=='cancelled'&&r.status!=='declined');
+  if(allLeaveReqs.length||allUnpaidReqs.length){
+    b+=`<div class="slbl" style="margin-top:4px">My upcoming leave</div>`;
+    allLeaveReqs.forEach(r=>{
+      const isPending=r.status==='pending';
+      const isApproved=r.status==='approved';
+      const statusCol=isApproved?'var(--green)':'var(--amb)';
+      const statusLabel=isApproved?'Approved':'Pending approval';
+      // Check if any of its shifts have been covered already
+      const hasCover=r.shiftKeys&&r.shiftKeys.some(k=>sOv[k]&&sOv[k].type==='covered');
+      b+=`<div style="background:var(--purbg);border:1px solid var(--purbrd);border-radius:7px;padding:9px 11px;margin-bottom:6px">`;
+      b+=`<div style="display:flex;justify-content:space-between;align-items:flex-start">`;
+      b+=`<div><div style="font-weight:700;font-size:12px;color:var(--pur)">Annual leave</div>`;
+      b+=`<div style="font-size:10px;color:var(--muted);margin-top:2px">${r.date} · ${r.hours.toFixed(1)} hrs</div>`;
+      if(r.shifts)b+=`<div style="font-size:10px;color:var(--muted);margin-top:1px">${r.shifts}</div>`;
+      b+=`<div style="font-size:10px;font-weight:700;color:${statusCol};margin-top:3px">${statusLabel}</div>`;
+      b+=`</div>`;
+      // Only show cancel if pending AND no cover claimed yet
+      if(isPending&&!hasCover){
+        b+=`<button class="sbtn sr" style="flex-shrink:0;margin-left:8px" onclick="cancelLeaveReq('${name}','annual','${r.id}')">Cancel</button>`;
+      } else if(hasCover){
+        b+=`<span style="font-size:10px;color:var(--green);font-weight:700;flex-shrink:0;margin-left:8px">Covered ✓</span>`;
+      }
+      b+=`</div></div>`;
+    });
+    allUnpaidReqs.forEach((r,i)=>{
+      const isPending=r.status==='pending';
+      const statusCol=r.status==='approved'?'var(--green)':'var(--amb)';
+      const hasCover=r.shiftKeys&&r.shiftKeys.some(k=>sOv[k]&&sOv[k].type==='covered');
+      b+=`<div style="background:var(--purbg);border:1px solid var(--purbrd);border-radius:7px;padding:9px 11px;margin-bottom:6px">`;
+      b+=`<div style="display:flex;justify-content:space-between;align-items:flex-start">`;
+      b+=`<div><div style="font-weight:700;font-size:12px;color:var(--pur)">Unpaid leave</div>`;
+      b+=`<div style="font-size:10px;color:var(--muted);margin-top:2px">${r.date} · ${r.hours.toFixed(1)} hrs</div>`;
+      if(r.shifts)b+=`<div style="font-size:10px;color:var(--muted);margin-top:1px">${r.shifts}</div>`;
+      b+=`<div style="font-size:10px;font-weight:700;color:${statusCol};margin-top:3px">${r.status==='approved'?'Approved':'Pending approval'}</div>`;
+      b+=`</div>`;
+      if(isPending&&!hasCover){
+        b+=`<button class="sbtn sr" style="flex-shrink:0;margin-left:8px" onclick="cancelLeaveReq('${name}','unpaid','${r.id}')">Cancel</button>`;
+      } else if(hasCover){
+        b+=`<span style="font-size:10px;color:var(--green);font-weight:700;flex-shrink:0;margin-left:8px">Covered ✓</span>`;
+      }
+      b+=`</div></div>`;
+    });
+  }
   b+=`<button class="mbg" style="margin-top:9px" onclick="cm('ovD');openSwapCal('${name}',null)">&#8646; Request Shift Swap</button>`;
   b+=`<button class="mbp" onclick="cm('ovD');openLeaveReq('${name}')">+ Request Leave</button>`;
   b+=`<button class="mbr" onclick="cm('ovD');openPC('${name}')">&#128274; Change My PIN</button>`;
@@ -1015,9 +1071,43 @@ function doCov(id){
 }
 
 // Reset a single shift override back to the base rota
+// Cancels any matching pending/approved leave request and refunds the hours
 function resetShiftToDefault(id){
+  const s=getShifts().find(x=>x.id===id);
+  if(s&&(s.type==='hol'||s.type==='unpaid')){
+    STAFF.forEach(({name})=>{
+      const h=HOL[name];if(!h)return;
+      // Annual leave requests
+      (h.req||[]).forEach(r=>{
+        if((r.status==='pending'||r.status==='approved')&&r.shiftKeys&&r.shiftKeys.includes(id)){
+          // Refund just the hours for this one shift
+          const shiftBase=BASE.find((b,bi)=>id.endsWith(`-${bi}`));
+          const shiftHrs=shiftBase?sh(shiftBase):0;
+          h.taken=Math.max(0,+(h.taken-shiftHrs).toFixed(1));
+          // Remove this shift from the request
+          r.shiftKeys=r.shiftKeys.filter(k=>k!==id);
+          r.hours=Math.max(0,+(r.hours-shiftHrs).toFixed(1));
+          // If no shifts remain, cancel the whole request
+          if(!r.shiftKeys.length)r.status='cancelled';
+          toast(`Leave cancelled for ${name} — ${shiftHrs.toFixed(1)}h refunded.`);
+        }
+      });
+      // Unpaid leave requests
+      (h.upd||[]).forEach(r=>{
+        if((r.status==='pending'||r.status==='approved')&&r.shiftKeys&&r.shiftKeys.includes(id)){
+          const shiftBase=BASE.find((b,bi)=>id.endsWith(`-${bi}`));
+          const shiftHrs=shiftBase?sh(shiftBase):0;
+          r.shiftKeys=r.shiftKeys.filter(k=>k!==id);
+          r.hours=Math.max(0,+(r.hours-shiftHrs).toFixed(1));
+          if(!r.shiftKeys.length)r.status='cancelled';
+          toast(`Unpaid leave cancelled for ${name}.`);
+        }
+      });
+    });
+  }
   if(sOv[id])delete sOv[id];
-  cm('ovSh');rw();saveAll();toast('Shift reset to default rota.');
+  cm('ovSh');rw();if(aOk){rRequests();rLeave();rH();}saveAll();
+  toast('Shift reset to default rota.');
 }
 function doCovHol(id,origStaff){
   const name=document.getElementById('covSel').value;const staff=STAFF.find(s=>s.name===name);const pin=gP('covPin');
@@ -1389,15 +1479,32 @@ function rShifts(){
 }
 function ePrev(){eCalMo.setMonth(eCalMo.getMonth()-1);rShifts();}
 function eNext(){eCalMo.setMonth(eCalMo.getMonth()+1);rShifts();}
-function selED(d,mo,yr){eSelDate=new Date(yr,mo,d);const di=eSelDate.getDay()===0?6:eSelDate.getDay()-1;delete eDraft[ddk(eSelDate,di)];rShifts();}
+function selED(d,mo,yr){
+  const newDate=new Date(yr,mo,d);
+  // Only clear the draft if selecting a different date than already selected
+  if(!eSelDate||eSelDate.toDateString()!==newDate.toDateString()){
+    if(eSelDate){const odi=eSelDate.getDay()===0?6:eSelDate.getDay()-1;delete eDraft[ddk(eSelDate,odi)];}
+    eSelDate=newDate;
+  }
+  rShifts();
+}
 function setDS(k,i,f,v){if(!eDraft[k])return;eDraft[k][i][f]=v;const s=eDraft[k][i];const b=document.getElementById(`hb${i}`);if(b)b.textContent=sh(s).toFixed(1)+'h';}
 function delDS(k,i){if(!eDraft[k])return;eDraft[k].splice(i,1);rShifts();}
 function addDS(k,di){if(!eDraft[k])eDraft[k]=BASE.filter(b=>b.day===di).map(s=>({s:s.s,e:s.e,staff:s.staff,type:'n'}));const last=eDraft[k];const le=last.length?last[last.length-1].e:'12:00';eDraft[k].push({s:le,e:'23:30',staff:'',type:'n'});rShifts();}
 function applyE(k,di){
-  if(!eDraft[k])return;const draft=eDraft[k];const bd=BASE.filter(b=>b.day===di);
+  if(!eDraft[k])return;
+  const draft=eDraft[k];
+  const bd=BASE.filter(b=>b.day===di);
+  // Check if anything actually differs from BASE (times, staff count, or staff names)
   let diff=draft.length!==bd.length;
-  if(!diff)draft.forEach((s,i)=>{if(!bd[i]||s.s!==bd[i].s||s.e!==bd[i].e||s.staff!==bd[i].staff)diff=true;});
-  if(diff)dOv[k]=draft.map(s=>({...s,type:'modified'}));else delete dOv[k];
+  if(!diff)draft.forEach((s,i)=>{
+    if(!bd[i]||s.s!==bd[i].s||s.e!==bd[i].e||(s.staff||'')!==(bd[i].staff||''))diff=true;
+  });
+  if(diff){
+    dOv[k]=draft.map(s=>({...s,type:'modified'}));
+  } else {
+    delete dOv[k]; // identical to base — no override needed
+  }
   rw();rShifts();if(aOk)rH();saveAll();toast('Changes applied to rota.');
 }
 function resetE(k){delete dOv[k];delete eDraft[k];rw();rShifts();saveAll();toast('Reset to default rota for this date.');}
@@ -1456,7 +1563,9 @@ function rRequests(){
       if(!isPending&&!resolvedShown){b+=`<div class="slbl" style="margin-top:12px">Resolved requests</div>`;resolvedShown=true;}
       const c=r.status==='approved'?'var(--green)':r.status==='declined'?'var(--red)':'var(--amb)';
       const cl=r.status==='approved'?'grn':r.status==='declined'?'red':'amb';
-      b+=`<div class="er ${cl}"><div><div class="elbl" style="color:${c}">${name} — Annual leave · ${r.status}</div><div class="edet">${r.date} · ${r.hours.toFixed(1)} hrs</div>${r.shifts?`<div class="edet" style="margin-top:2px;font-size:10px">Shifts: ${r.shifts}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">${isPending?`<button class="sbtn sg" onclick="apH('${name}','${r.date}')">Approve</button><button class="sbtn sr" onclick="dcH('${name}','${r.date}')">Decline</button>`:`<span style="font-size:10px;font-weight:700;color:${c}">${r.status}</span>`}</div></div>`;
+      const isApproved=r.status==='approved';
+      const canCancel=isPending||isApproved;
+      b+=`<div class="er ${cl}"><div><div class="elbl" style="color:${c}">${name} — Annual leave · ${r.status}</div><div class="edet">${r.date} · ${r.hours.toFixed(1)} hrs</div>${r.shifts?`<div class="edet" style="margin-top:2px;font-size:10px">Shifts: ${r.shifts}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">${isPending?`<button class="sbtn sg" onclick="apH('${name}','${r.date}')">Approve</button><button class="sbtn sr" onclick="dcH('${name}','${r.date}')">Decline</button>`:isApproved?`<button class="sbtn sr" onclick="adminCancelLeave('${name}','annual','${r.id}')">Cancel</button>`:''}<span style="font-size:10px;font-weight:700;color:${c}">${r.status}</span></div></div>`;
     } else if(item.type==='unpaid'){
       const{name,r,idx}=item;
       const isPending=r.status==='pending';
@@ -1464,7 +1573,8 @@ function rRequests(){
       if(!isPending&&!resolvedShown){b+=`<div class="slbl" style="margin-top:12px">Resolved requests</div>`;resolvedShown=true;}
       const c=r.status==='approved'?'var(--green)':r.status==='declined'?'var(--red)':'var(--pur)';
       const cl=r.status==='approved'?'grn':r.status==='declined'?'red':'pur';
-      b+=`<div class="er ${cl}"><div><div class="elbl" style="color:${c}">${name} — Unpaid leave · ${r.status}</div><div class="edet">${r.date} · ${r.hours.toFixed(1)} hrs${r.reason?` · ${r.reason}`:''}</div>${r.shifts?`<div class="edet" style="margin-top:2px;font-size:10px">Shifts: ${r.shifts}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">${isPending?`<button class="sbtn sg" onclick="apU('${name}',${idx})">Approve</button><button class="sbtn sr" onclick="dcU('${name}',${idx})">Decline</button>`:`<span style="font-size:10px;font-weight:700;color:${c}">${r.status}</span>`}</div></div>`;
+      const isApprovedU=r.status==='approved';
+      b+=`<div class="er ${cl}"><div><div class="elbl" style="color:${c}">${name} — Unpaid leave · ${r.status}</div><div class="edet">${r.date} · ${r.hours.toFixed(1)} hrs${r.reason?` · ${r.reason}`:''}</div>${r.shifts?`<div class="edet" style="margin-top:2px;font-size:10px">Shifts: ${r.shifts}</div>`:''}</div><div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end">${isPending?`<button class="sbtn sg" onclick="apU('${name}',${idx})">Approve</button><button class="sbtn sr" onclick="dcU('${name}',${idx})">Decline</button>`:isApprovedU?`<button class="sbtn sr" onclick="adminCancelLeave('${name}','unpaid','${r.id}')">Cancel</button>`:''}<span style="font-size:10px;font-weight:700;color:${c}">${r.status}</span></div></div>`;
     } else if(item.type==='swap'){
       const{sw}=item;
       if(!pendingShown){b+=`<div class="slbl">Pending requests</div>`;pendingShown=true;}
@@ -1487,13 +1597,14 @@ function rSwaps(){rRequests();} // alias — swaps now shown in Requests tab
 // LEAVE ADMIN (allowances only — requests are in rRequests)
 function rLeave(){
   let b=`<div class="slbl">Annual leave allowances</div>`;
-  b+=`<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Contracted leave allowance is calculated automatically from the default rota (contracted hrs × 4). Use the adjustment field for any additions or deductions. Taken hours can be manually corrected if needed.</div>`;
+  b+=`<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Contracted leave allowance is calculated automatically from the default rota (contracted hrs × 4). Use the adjustment field for any additions or deductions. Click <strong>Save Adjustments</strong> to apply them permanently and reset to zero.</div>`;
 
   STAFF.forEach(({name})=>{
     const h=HOL[name]||{adj:0,taken:0};
     const contracted=+(cwhRaw(name)*4).toFixed(1);
+    const adjBaked=+(h.adjBaked||0).toFixed(1);
     const adj=+(h.adj||0).toFixed(1);
-    const total=+(contracted+adj).toFixed(1);
+    const total=+(contracted+adjBaked+adj).toFixed(1);
     const taken=+(h.taken||0).toFixed(1);
     const rv=+(total-taken).toFixed(1);
 
@@ -1501,27 +1612,24 @@ function rLeave(){
     b+=`<div style="font-weight:700;font-size:13px;color:var(--navy);margin-bottom:9px">${name}</div>`;
     b+=`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">`;
 
-    // Contracted allowance (read-only)
     b+=`<div style="display:flex;flex-direction:column;gap:3px">
       <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Contracted leave allowance</label>
-      <span style="font-size:14px;font-weight:800;color:var(--navy2)">${contracted}h</span>
+      <span style="font-size:14px;font-weight:800;color:var(--navy2)">${contracted}h${adjBaked!==0?`<span style="font-size:10px;color:var(--amb);font-weight:700;margin-left:5px">${adjBaked>0?'+':''}${adjBaked}h saved</span>`:''}
+      </span>
     </div>`;
 
-    // Adjustment (editable)
     b+=`<div style="display:flex;flex-direction:column;gap:3px">
       <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Adjustment (+ / −)</label>
-      <input type="number" class="hni" style="width:70px" value="${adj}" step="0.5"
+      <input type="number" class="hni" style="width:70px" value="${adj}" step="0.5" id="adj_${name}"
         onchange="uH('${name}',parseFloat(this.value)||0)"
-        title="Add or subtract hours e.g. +7.5 for carried leave, -3.5 for a deduction"/>
+        title="Add or subtract hours. Use Save Adjustments to apply permanently."/>
     </div>`;
 
-    // Total allowance
     b+=`<div style="display:flex;flex-direction:column;gap:3px">
       <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Total allowance</label>
       <span style="font-size:14px;font-weight:800;color:var(--navy)" id="leaveTotal_${name}">${total}h</span>
     </div>`;
 
-    // Taken (editable)
     b+=`<div style="display:flex;flex-direction:column;gap:3px">
       <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Hours taken</label>
       <input type="number" class="hni" style="width:70px" value="${taken}" step="0.5" min="0"
@@ -1529,13 +1637,22 @@ function rLeave(){
         title="Manually adjust hours taken if needed"/>
     </div>`;
 
-    // Remaining
     b+=`<div style="display:flex;flex-direction:column;gap:3px">
       <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Remaining</label>
       <span style="font-size:14px;font-weight:800;color:${rv<0?'var(--red)':rv<total*0.25?'var(--amb)':'var(--green)'}" id="leaveRem_${name}">${rv}h</span>
     </div>`;
 
-    b+=`</div></div>`;
+    b+=`</div>`;
+
+    // Save Adjustment button — always visible
+    b+=`<div style="margin-top:10px">
+      <button class="sbtn sg" onclick="saveAdj('${name}')" style="font-size:11px;padding:5px 12px">
+        &#10003; Save Adjustment
+      </button>
+      ${adj!==0?`<span style="font-size:10px;color:var(--muted);margin-left:8px">Will add ${adj>0?'+':''}${adj}h to total and reset to 0</span>`:''}
+    </div>`;
+
+    b+=`</div>`;
   });
 
   document.getElementById('apL').innerHTML=b;
@@ -1544,9 +1661,8 @@ function rLeave(){
 function uH(n,v){
   if(!HOL[n])return;
   HOL[n].adj=+(v||0).toFixed(1);
-  // Update totals live without full re-render
   const contracted=+(cwhRaw(n)*4).toFixed(1);
-  const total=+(contracted+HOL[n].adj).toFixed(1);
+  const total=+(contracted+(HOL[n].adjBaked||0)+HOL[n].adj).toFixed(1);
   const rv=+(total-(HOL[n].taken||0)).toFixed(1);
   const tEl=document.getElementById(`leaveTotal_${n}`);
   const rEl=document.getElementById(`leaveRem_${n}`);
@@ -1555,12 +1671,22 @@ function uH(n,v){
   rH();saveAll();
 }
 
+function saveAdj(n){
+  if(!HOL[n])return;
+  const contracted=+(cwhRaw(n)*4).toFixed(1);
+  const adj=+(HOL[n].adj||0).toFixed(1);
+  if(adj===0){toast('No adjustment to save');return;}
+  HOL[n].adjBaked=+((HOL[n].adjBaked||0)+adj).toFixed(1);
+  HOL[n].adj=0;
+  rLeave();rH();saveAll();
+  toast(`Adjustment of ${adj>0?'+':''}${adj}h saved for ${n}. Total allowance is now ${(contracted+HOL[n].adjBaked).toFixed(1)}h.`);
+}
+
 function uHTaken(n,v){
   if(!HOL[n])return;
   HOL[n].taken=Math.max(0,+(v||0).toFixed(1));
-  // Update remaining live
   const contracted=+(cwhRaw(n)*4).toFixed(1);
-  const total=+(contracted+(HOL[n].adj||0)).toFixed(1);
+  const total=+(contracted+(HOL[n].adjBaked||0)+(HOL[n].adj||0)).toFixed(1);
   const rv=+(total-HOL[n].taken).toFixed(1);
   const rEl=document.getElementById(`leaveRem_${n}`);
   if(rEl){rEl.textContent=rv+'h';rEl.style.color=rv<0?'var(--red)':rv<total*0.25?'var(--amb)':'var(--green)';}
@@ -1594,7 +1720,29 @@ function dcU(n,i){
   rRequests();rLeave();rw();saveAll();toast(`Unpaid leave declined for ${n}.`);
 }
 
-// SICK LEAVE
+// Admin cancel of approved/pending leave — refunds hours and resets rota shifts to default
+function adminCancelLeave(name,type,reqId){
+  const h=HOL[name];if(!h)return;
+  if(type==='annual'){
+    const r=h.req.find(x=>x.id===reqId);if(!r)return;
+    // Refund all hours for this request
+    h.taken=Math.max(0,+(h.taken-r.hours).toFixed(1));
+    // Reset every rota shift back to default
+    if(r.shiftKeys&&r.shiftKeys.length){
+      r.shiftKeys.forEach(k=>{if(sOv[k]&&(sOv[k].type==='hol'||sOv[k].type==='covered')&&sOv[k].staff===name)delete sOv[k];});
+    }
+    r.status='cancelled';
+    toast(`Holiday cancelled for ${name}. ${r.hours.toFixed(1)}h refunded, shifts restored.`);
+  } else {
+    const r=h.upd.find(x=>x.id===reqId);if(!r)return;
+    if(r.shiftKeys&&r.shiftKeys.length){
+      r.shiftKeys.forEach(k=>{if(sOv[k]&&sOv[k].type==='unpaid'&&sOv[k].staff===name)delete sOv[k];});
+    }
+    r.status='cancelled';
+    toast(`Unpaid leave cancelled for ${name}. Shifts restored.`);
+  }
+  rRequests();rLeave();rH();rw();saveAll();
+}
 // Tracked in HOL[name].sick: [{id, shiftId, date, hours, sickHrsTotal, status, note}]
 // Pay policy: first (weekly hrs × 2) sick hours = full pay; beyond that = SSP (£116.75/wk)
 // sickHrsTotal is cumulative hours across all sick records
