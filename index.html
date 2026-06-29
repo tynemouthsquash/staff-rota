@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota App v14.3 -->
+<!-- TSC Staff Rota App v14.4 -->
 <!-- Last updated: June 2026 -->
 <html lang="en">
 <head>
@@ -1202,7 +1202,16 @@ function rSC(){
   for(let i=0;i<off;i++)b+=`<div class="cmd ot"></div>`;
   for(let d=1;d<=dim;d++){
     const dt=new Date(yr,mo,d),di=dt.getDay()===0?6:dt.getDay()-1;
-    const isTod=dt.toDateString()===today.toDateString(),hM=BASE.some(b=>b.day===di&&b.staff===sn);
+    const isTod=dt.toDateString()===today.toDateString();
+    const isPast=dt<today;
+    // Check BASE for regular shift
+    const baseShift=BASE.some(b=>b.day===di&&b.staff===sn);
+    // Check sOv for covered/assigned shifts on this specific date
+    const ovShift=!isPast&&Object.entries(sOv).some(([k,v])=>{
+      if(v.staff!==sn)return false;
+      try{const parts=k.split('-');const d2=new Date(parts.slice(0,-1).join('-'));return d2.toDateString()===dt.toDateString();}catch(e){return false;}
+    });
+    const hM=(baseShift||ovShift)&&!isPast;
     const selM=calSel&&calSel.d===d&&calSel.mo===mo&&calSel.yr===yr;
     b+=`<div class="cmd${hM?' hs':''}${selM?' s2':''}" onclick="${hM?`scK(${d},${mo},${yr})`:''}"><div class="cdn${isTod?' tdn':''}">${d}</div>${hM?`<div class="mdot"></div>`:''}</div>`;
   }
@@ -1217,9 +1226,30 @@ function scPrev(){calMo.setMonth(calMo.getMonth()-1);rSC();}
 function scNext(){calMo.setMonth(calMo.getMonth()+1);rSC();}
 function scK(d,mo,yr){
   const dt=new Date(yr,mo,d),di=dt.getDay()===0?6:dt.getDay()-1;
-  const{sn}=calCtx;const bi=BASE.findIndex(b=>b.day===di&&b.staff===sn);if(bi<0)return;
-  const wkS=gM(dt);const d2=new Date(wkS);d2.setDate(d2.getDate()+BASE[bi].day);
-  calSel={key:`${d2.toDateString()}-${bi}`,d,mo,yr,s:BASE[bi].s,e:BASE[bi].e,day:di,dateStr:`${d} ${MON[mo]}`};rSC();
+  const{sn}=calCtx;
+
+  // First try BASE shift for this person on this day
+  const bi=BASE.findIndex(b=>b.day===di&&b.staff===sn);
+  if(bi>=0){
+    const wkS=gM(dt);const d2=new Date(wkS);d2.setDate(d2.getDate()+BASE[bi].day);
+    calSel={key:`${d2.toDateString()}-${bi}`,d,mo,yr,s:BASE[bi].s,e:BASE[bi].e,day:di,dateStr:`${d} ${MON[mo]}`};
+    rSC();return;
+  }
+
+  // Fall back to sOv — covered/assigned shift on this specific date
+  const ovEntry=Object.entries(sOv).find(([k,v])=>{
+    if(v.staff!==sn)return false;
+    try{const parts=k.split('-');const d2=new Date(parts.slice(0,-1).join('-'));return d2.toDateString()===dt.toDateString();}catch(e){return false;}
+  });
+  if(ovEntry){
+    const[key,ov]=ovEntry;
+    // Get shift times from the BASE entry referenced by the key
+    const biRef=parseInt(key.split('-').pop());
+    const baseRef=BASE[biRef];
+    const s=baseRef?baseRef.s:'12:00',e=baseRef?baseRef.e:'23:30';
+    calSel={key,d,mo,yr,s,e,day:di,dateStr:`${d} ${MON[mo]}`};
+    rSC();return;
+  }
 }
 function subSwp(){if(!calSel)return;const{sn}=calCtx;if(!swpBrd.find(x=>x.shiftId===calSel.key)){swpBrd.push({id:'s'+Date.now(),shiftId:calSel.key,day:calSel.day,s:calSel.s,e:calSel.e,staff:sn,dateStr:calSel.dateStr,vols:[]});}cm('ovSC');rw();saveAll();toast(`Swap offered for ${calSel.dateStr}. All staff notified.`);calSel=null;}
 function subExch(){if(!calSel)return;const{sn,swId}=calCtx;const sw=swpBrd.find(s=>s.id===swId);if(!sw)return;sw.vols=sw.vols||[];if(!sw.vols.find(v=>v.name===sn)){sw.vols.push({name:sn,key:calSel.key,label:`${calSel.dateStr} ${fmt(calSel.s)}–${fmt(calSel.e)}`});}cm('ovSC');rw();saveAll();toast(`Offer sent to ${sw.staff}. They'll choose who to accept.`);calSel=null;}
