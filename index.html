@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota App v14.83 -->
+<!-- TSC Staff Rota App v14.86 -->
 <!-- Last updated: June 2026 -->
 <html lang="en">
 <head>
@@ -1535,25 +1535,61 @@ function rH(){
   let cards='',rows='';
   STAFF.forEach(({name})=>{
     const h=hrs[name],c=cnt[name];if(h===0&&!HOL[name])return;const r=rem(name);
-    // Shift notes: holiday hours taken this week + sick hours this week
+    // Calculate paid holiday and unpaid leave hours separately for this week
     const wkStart=ws,wkEnd=new Date(ws.getTime()+7*864e5);
-    const holHrsWk=(HOL[name]&&HOL[name].req||[]).filter(req=>req.status!=='declined').reduce((a,req)=>{
-      if(!req.shiftKeys)return a;
-      return a+req.shiftKeys.reduce((b,k)=>{
-        try{const parts=k.split('-');const d=new Date(parts.slice(0,-1).join('-'));return(d>=wkStart&&d<wkEnd)?b+sh(BASE[parseInt(parts[parts.length-1])]||{s:'12:00',e:'18:00'}):b;}catch(e){return b;}
+
+    // Helper: sum hours from shift keys that fall in this week
+    const wkHrsFromKeys=(shiftKeys)=>{
+      if(!shiftKeys||!shiftKeys.length)return 0;
+      return shiftKeys.reduce((a,k)=>{
+        try{
+          const parts=k.split('-');
+          const d=new Date(parts.slice(0,-1).join('-'));
+          if(d<wkStart||d>=wkEnd)return a;
+          const bi=parseInt(parts[parts.length-1]);
+          return a+sh(BASE[bi]||{s:'12:00',e:'18:00'});
+        }catch(e){return a;}
       },0);
-    },0);
+    };
+
+    // Annual (paid) holiday hours this week — from approved/pending req entries
+    const holHrsWk=(HOL[name]&&HOL[name].req||[])
+      .filter(req=>req.status!=='declined'&&req.status!=='cancelled')
+      .reduce((a,req)=>a+wkHrsFromKeys(req.shiftKeys),0);
+
+    // Unpaid leave hours this week — from upd entries
+    const unpaidHrsWk=(HOL[name]&&HOL[name].upd||[])
+      .filter(req=>req.status!=='declined'&&req.status!=='cancelled')
+      .reduce((a,req)=>a+wkHrsFromKeys(req.shiftKeys),0);
+
+    // Sick hours this week
     const sickHrsWk=(HOL[name]&&HOL[name].sick||[]).reduce((a,r)=>{
-      if(!r.shiftIds&&!r.shiftId)return a;
-      const ids=r.shiftIds||[r.shiftId];
-      return a+ids.reduce((b,k)=>{
-        try{const parts=k.split('-');const d=new Date(parts.slice(0,-1).join('-'));return(d>=wkStart&&d<wkEnd)?b+sh(BASE[parseInt(parts[parts.length-1])]||{s:'12:00',e:'18:00'}):b;}catch(e){return b;}
-      },0);
+      const ids=r.shiftIds||( r.shiftId?[r.shiftId]:[] );
+      return a+wkHrsFromKeys(ids);
     },0);
-    // Card — include holiday hours if applicable (for payroll)
-    cards+=`<div class="rc"><div class="rcn">${name}</div><div class="rch">${h.toFixed(1)}</div><div class="rcl">hrs this week</div><div style="font-size:10px;color:var(--muted);margin-top:2px">${c} shift${c!==1?'s':''}${holHrsWk>0?`<br><span style="color:var(--pur);font-weight:700">${holHrsWk.toFixed(1)}h holiday</span>`:''}</div></div>`;
+
+    // For partial shifts: check if both hol and unpaid keys exist for the same shift
+    // (submitLeaveReq splits a shift across both when balance runs out mid-shift)
+    // In that case holHrsWk reflects only the paid portion — no adjustment needed
+    // since req.hours already stores only the paid amount
+
+    // Card — worked hours and holiday hours at equal hierarchy for payroll
+    let cardContent='';
+    if(holHrsWk>0){
+      cardContent=`<div style="display:flex;justify-content:space-around;width:100%;margin-top:4px">
+        <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--navy)">${h.toFixed(1)}</div><div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase">Worked</div></div>
+        <div style="width:1px;background:var(--border)"></div>
+        <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--pur)">${holHrsWk.toFixed(1)}</div><div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase">Holiday</div></div>
+      </div>`;
+    } else {
+      cardContent=`<div class="rch">${h.toFixed(1)}</div><div class="rcl">hrs this week</div>`;
+    }
+    cards+=`<div class="rc"><div class="rcn">${name}</div>${cardContent}<div style="font-size:10px;color:var(--muted);margin-top:4px">${c} shift${c!==1?'s':''}</div></div>`;
+
+    // Shift notes column
     let notes=[];
     if(holHrsWk>0)notes.push(`${holHrsWk.toFixed(1)}h holiday`);
+    if(unpaidHrsWk>0)notes.push(`${unpaidHrsWk.toFixed(1)}h unpaid`);
     if(sickHrsWk>0)notes.push(`${sickHrsWk.toFixed(1)}h sick`);
     const noteCell=notes.length?`<span style="font-size:10px;color:var(--muted)">${notes.join(' · ')}</span>`:'—';
     rows+=`<tr><td style="font-weight:600">${name}</td><td>${c}</td><td class="rv">${h.toFixed(1)}</td><td class="rv">${tot(name).toFixed(1)}</td><td class="rv">${(HOL[name]&&HOL[name].taken||0).toFixed(1)}</td><td class="rv" style="color:${r<8?'var(--red)':'var(--navy)'}">${r.toFixed(1)}</td><td>${noteCell}</td></tr>`;
