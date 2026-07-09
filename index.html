@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota App v14.86 -->
+<!-- TSC Staff Rota App v14.87 -->
 <!-- Last updated: June 2026 -->
 <html lang="en">
 <head>
@@ -468,7 +468,8 @@ function showToastError(msg) {
   setTimeout(() => t.remove(), 6000);
 }
 // ============================================================
-const DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const DAYS=['Fri','Sat','Sun','Mon','Tue','Wed','Thu'];
+const BASE_DAY_NAMES=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const MONF=['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -493,31 +494,24 @@ function pt(t){const[h,m]=t.split(':').map(Number);return h+m/60;}
 // sh() returns payable hours: raw duration + 0.5hr lunch allowance for shifts >= 6.5hrs
 function sh(s){const ss=s.s||s.start,ee=s.e||s.end;let ev=pt(ee),sv=pt(ss);if(ev<sv)ev+=24;const raw=ev-sv;return+(raw+(raw>=6.5?0.5:0)).toFixed(2);}
 function fmt(t){const[h,m]=t.split(':');const hh=parseInt(h);return(hh%12||12)+(m!=='00'?':'+m:'')+(hh>=12?'pm':'am');}
-// Rota week: Monday-start (for display grid)
-function gM(d){const dd=new Date(d);const dy=dd.getDay();dd.setDate(dd.getDate()-(dy===0?6:dy-1));dd.setHours(0,0,0,0);return dd;}
-// Payroll week: Friday-start
-function gFri(d){const dd=new Date(d);const dy=dd.getDay();// 0=Sun,1=Mon,...5=Fri,6=Sat
-const diff=(dy>=5)?dy-5:dy+2;// days since last Friday
-dd.setDate(dd.getDate()-diff);dd.setHours(0,0,0,0);return dd;}
-// Display label uses Mon–Sun (rota week)
+// Week start: Friday (matches payroll week)
+function gM(d){const dd=new Date(d);const dy=dd.getDay();const diff=(dy>=5)?dy-5:dy+2;dd.setDate(dd.getDate()-diff);dd.setHours(0,0,0,0);return dd;}
+// gFri is now identical to gM — kept as alias for compatibility
+function gFri(d){return gM(d);}
+// Display label: Fri–Thu
 function wkL(d){const e=new Date(d);e.setDate(e.getDate()+6);return`${d.getDate()} ${MON[d.getMonth()]} – ${e.getDate()} ${MON[e.getMonth()]} ${e.getFullYear()}`;}
-// Payroll week number: Fri–Thu, week 1 = first full Fri-Thu in April
-function wkN(monDate){
-  // Find the payroll week (Fri) that contains this Mon-start rota week
-  // The Friday before or on the Monday is the payroll week start
-  const fri=gFri(monDate);
-  const yr=fri.getFullYear();
-  // Find first Friday of April in that year
+// Payroll week number: week 1 = first full Fri-Thu of April
+function wkN(friDate){
+  const yr=friDate.getFullYear();
   let firstFri=new Date(yr,3,1);
   while(firstFri.getDay()!==5)firstFri.setDate(firstFri.getDate()+1);
-  const diff=Math.round((fri-firstFri)/(7*864e5));
+  const diff=Math.round((friDate-firstFri)/(7*864e5));
   return diff<0?null:diff+1;
 }
-// Payroll week label for reports (Fri–Thu)
-function pwkL(monDate){
-  const fri=gFri(monDate);
-  const thu=new Date(fri);thu.setDate(thu.getDate()+6);
-  return`${fri.getDate()} ${MON[fri.getMonth()]} – ${thu.getDate()} ${MON[thu.getMonth()]} ${thu.getFullYear()} (Fri–Thu)`;
+// Payroll week label
+function pwkL(friDate){
+  const thu=new Date(friDate);thu.setDate(thu.getDate()+6);
+  return`${friDate.getDate()} ${MON[friDate.getMonth()]} – ${thu.getDate()} ${MON[thu.getMonth()]} ${thu.getFullYear()} (Fri–Thu)`;
 }
 function cwh(n){return BASE.filter(b=>b.staff===n).reduce((a,b)=>a+sh(b),0);}
 // cwhRaw = contracted hours (no lunch addition) — used for leave allowance calculation
@@ -579,7 +573,14 @@ function getDShifts(date){
     return Object.assign({},{...b,start:b.s,end:b.e},{id,day:di,origIdx:bi},sOv[id]||{});
   });
 }
-function getShifts(){let r=[];for(let d=0;d<7;d++){const dt=new Date(ws);dt.setDate(dt.getDate()+d);getDShifts(dt).forEach(s=>r.push(s));}return r;}
+function getShifts(){
+  let r=[];
+  for(let d=0;d<7;d++){
+    const dt=new Date(ws);dt.setDate(dt.getDate()+d);
+    getDShifts(dt).forEach(s=>r.push(s));
+  }
+  return r;
+}
 
 const BH=70;
 function rw(){
@@ -598,8 +599,11 @@ function rw(){
   let html='';
   for(let d=0;d<7;d++){
     const dt=new Date(ws);dt.setDate(dt.getDate()+d);
-    const tod=dt.toDateString()===today.toDateString(),isWE=d>=5,tlH=BH*(isWE?3:2);
-    const k=ddk(dt,d),hasCu=!!dOv[k],ds=shifts.filter(s=>s.day===d);
+    const tod=dt.toDateString()===today.toDateString();
+    const di=dt.getDay()===0?6:dt.getDay()-1; // BASE day index: Mon=0..Sun=6
+    const isWE=(di===5||di===6);
+    const tlH=BH*(isWE?3:2);
+    const k=ddk(dt,di),ds=shifts.filter(s=>s.day===di);
     const sts=ds.map(s=>pt(s.s||s.start)),ens=ds.map(s=>{const ev=pt(s.e||s.end);return ev<pt(s.s||s.start)?ev+24:ev;});
     const dS=sts.length?Math.min(...sts):12,dE=ens.length?Math.max(...ens):23.5,sp=Math.max(dE-dS,1);
     html+=`<div><div class="dhead${tod?' tdcol':''}"><div class="dn">${DAYS[d]}</div><div class="dd">${tod?`<span class="tdnum">${dt.getDate()}</span>`:dt.getDate()}</div></div><div class="tl" style="height:${tlH}px">`;
@@ -674,7 +678,7 @@ function openAlerts(){
     uncov.forEach(s=>{
       const dt=s._date;
       const di=dt.getDay()===0?6:dt.getDay()-1;
-      const dlbl=`${DAYS[di]} ${dt.getDate()} ${MON[dt.getMonth()]}`;
+      const dlbl=`${BASE_DAY_NAMES[di]} ${dt.getDate()} ${MON[dt.getMonth()]}`;
       b+=`<div class="alrt nc"><div><div class="albl" style="color:var(--red)">Cover needed</div><div class="adet">${dlbl} · ${fmt(s.s||s.start)}–${fmt(s.e||s.end)}</div></div><button class="clb clr" onclick="cm('ovA');openClaimById('${s.id}','${dlbl}','${fmt(s.s||s.start)}','${fmt(s.e||s.end)}',${dt.getTime()})">Claim shift</button></div>`;
     });
   }
@@ -683,7 +687,7 @@ function openAlerts(){
     needCover.forEach(s=>{
       const dt=s._date;
       const di=dt.getDay()===0?6:dt.getDay()-1;
-      const dlbl=`${DAYS[di]} ${dt.getDate()} ${MON[dt.getMonth()]}`;
+      const dlbl=`${BASE_DAY_NAMES[di]} ${dt.getDate()} ${MON[dt.getMonth()]}`;
       const typeLabel=s.type==='hol'?`${s.staff} on leave`:s.type==='sick'?`${s.staff} sick`:s.type==='unpaid'?`${s.staff} on unpaid leave`:s.staff;
       b+=`<div class="alrt sa"><div><div class="albl" style="color:var(--amb)">${typeLabel}</div><div class="adet">${dlbl} · ${fmt(s.s||s.start)}–${fmt(s.e||s.end)}</div></div><button class="clb clg" onclick="cm('ovA');jumpToWeekAndOpen('${s.id}',${dt.getTime()})">Cover shift</button></div>`;
     });
@@ -740,7 +744,7 @@ function openClaim(id,type){
     const s=getShifts().find(x=>x.id===id);if(!s)return;
     const dt=new Date(ws);dt.setDate(dt.getDate()+s.day);
     document.getElementById('cTitle').textContent='Claim Cover Shift';
-    let b=`<div class="ibx"><strong>${DAYS[s.day]} ${dt.getDate()} ${MON[dt.getMonth()]}</strong><br>${fmt(s.s||s.start)} – ${fmt(s.e||s.end)} · ${sh(s).toFixed(1)} hrs</div>`;
+    let b=`<div class="ibx"><strong>${BASE_DAY_NAMES[s.day]} ${dt.getDate()} ${MON[dt.getMonth()]}</strong><br>${fmt(s.s||s.start)} – ${fmt(s.e||s.end)} · ${sh(s).toFixed(1)} hrs</div>`;
     b+=`<div class="mf"><label>Your name</label><select id="clmSel">${STAFF.map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
     b+=`<div class="mf"><label>PIN</label><div class="prow" id="clmPin"></div></div>`;
     b+=`<button class="mbgn" onclick="confClaim('${id}')">Confirm — I'll cover this shift</button>`;
@@ -857,7 +861,7 @@ function openDash(name){
   upcoming7.forEach(s=>{
     const dt=s._date;
     const di=dt.getDay()===0?6:dt.getDay()-1;
-    b+=`<div class="mrow"><div><div style="font-size:12px;font-weight:700">${DAYS[di]} ${dt.getDate()} ${MON[dt.getMonth()]}</div><div style="font-size:10px;color:var(--muted)">${fmt(s.s||s.start)} – ${fmt(s.e||s.end)}</div></div><div style="font-size:14px;font-weight:800;color:var(--navy)">${sh(s).toFixed(1)}h</div></div>`;
+    b+=`<div class="mrow"><div><div style="font-size:12px;font-weight:700">${BASE_DAY_NAMES[di]} ${dt.getDate()} ${MON[dt.getMonth()]}</div><div style="font-size:10px;color:var(--muted)">${fmt(s.s||s.start)} – ${fmt(s.e||s.end)}</div></div><div style="font-size:14px;font-weight:800;color:var(--navy)">${sh(s).toFixed(1)}h</div></div>`;
   });
 
   // Upcoming leave overview
@@ -975,7 +979,7 @@ function cancelSwapVol(swId,name){
 }
 function openSh(id){
   const s=getShifts().find(x=>x.id===id);if(!s)return;
-  document.getElementById('shTitle').textContent=`${DAYS[s.day]} · ${fmt(s.s||s.start)}–${fmt(s.e||s.end)}`;
+  document.getElementById('shTitle').textContent=`${BASE_DAY_NAMES[s.day]} · ${fmt(s.s||s.start)}–${fmt(s.e||s.end)}`;
   let b='';
 
   if(!s.staff||s.type==='cover'){
@@ -1084,8 +1088,7 @@ function openSh(id){
         const shiftDateMs=getShiftDateMs(s.id);
         const shiftKey=s.id;
         const shiftHrs=sh(s);
-        const di2=s.day;
-        const dt2=new Date(ws);dt2.setDate(dt2.getDate()+di2);
+        const di2=dt2.getDay()===0?6:dt2.getDay()-1;
         const dateStr=`${dt2.getDate()} ${MON[dt2.getMonth()]}`;
         const timeStr=`${fmt(s.s||s.start)}–${fmt(s.e||s.end)}`;
         b+=`<button class="mbp" style="margin-top:9px" onclick="cm('ovSh');quickHolidayReq('${sessionName}','${shiftKey}',${shiftHrs},'${dateStr}','${timeStr}')">&#127958; Request holiday for this shift</button>`;
@@ -1266,7 +1269,7 @@ function rSC(){
   let b=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px"><button class="cnb" onclick="scPrev()">&#8592;</button><span style="font-size:13px;font-weight:700">${MONF[mo]} ${yr}</span><button class="cnb" onclick="scNext()">&#8594;</button></div>`;
   b+=`<div class="ibx" style="margin-bottom:7px">${swId?'Select one of your shifts to offer in exchange.':'Tap a day with your shift (gold dot) to offer for swap. Only that single date is affected.'}</div>`;
   b+=`<div class="cal-mini">`;
-  DAYS.forEach(d=>{b+=`<div class="cmh">${d[0]}</div>`;});
+  BASE_DAY_NAMES.forEach(d=>{b+=`<div class="cmh">${d[0]}</div>`;});
   for(let i=0;i<off;i++)b+=`<div class="cmd ot"></div>`;
   for(let d=1;d<=dim;d++){
     const dt=new Date(yr,mo,d),di=dt.getDay()===0?6:dt.getDay()-1;
@@ -1354,7 +1357,7 @@ function renderLeaveReq(){
   b+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px"><button class="cnb" onclick="lvCalPrev()">&#8592;</button><span style="font-size:13px;font-weight:700">${MONF[mo]} ${yr}</span><button class="cnb" onclick="lvCalNext()">&#8594;</button></div>`;
   b+=`<div style="font-size:10px;color:var(--muted);margin-bottom:6px;font-weight:600">Tap a shift to select / deselect</div>`;
   b+=`<div class="cal-mini">`;
-  DAYS.forEach(d=>{b+=`<div class="cmh">${d[0]}</div>`;});
+  BASE_DAY_NAMES.forEach(d=>{b+=`<div class="cmh">${d[0]}</div>`;});
   for(let i=0;i<off;i++)b+=`<div class="cmd ot"></div>`;
   for(let d=1;d<=dim;d++){
     const dt=new Date(yr,mo,d);
@@ -1601,7 +1604,7 @@ function rH(){
 function rShifts(){
   const yr=eCalMo.getFullYear(),mo=eCalMo.getMonth(),fd=new Date(yr,mo,1).getDay(),dim=new Date(yr,mo+1,0).getDate(),off=fd===0?6:fd-1;
   let ch=`<div class="ccard"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--navy);margin-bottom:8px">Select date to edit</div><div class="cnav"><button class="cnb" onclick="ePrev()">&#8592;</button><span class="cmlbl">${MONF[mo]} ${yr}</span><button class="cnb" onclick="eNext()">&#8594;</button></div><div style="font-size:10px;color:var(--muted);margin-bottom:6px;font-weight:600">Gold border = modified · Click any date to edit</div><div class="fcg">`;
-  DAYS.forEach(d=>{ch+=`<div class="fch">${d[0]}</div>`;});
+  BASE_DAY_NAMES.forEach(d=>{ch+=`<div class="fch">${d[0]}</div>`;});
   for(let i=0;i<off;i++)ch+=`<div class="fd ot"></div>`;
   for(let d=1;d<=dim;d++){
     const dt=new Date(yr,mo,d),di=dt.getDay()===0?6:dt.getDay()-1;
@@ -1629,7 +1632,7 @@ function rShifts(){
   if(!eSelDate){ep+=`<div class="nosel">&#8592; Select a date from the calendar to view and edit its shifts</div>`;}
   else{
     const dt=eSelDate,di=dt.getDay()===0?6:dt.getDay()-1,k=ddk(dt,di),hM=!!dOv[k];
-    const lbl=`${DAYS[di]} ${dt.getDate()} ${MON[dt.getMonth()]} ${dt.getFullYear()}`;
+    const lbl=`${BASE_DAY_NAMES[di]} ${dt.getDate()} ${MON[dt.getMonth()]} ${dt.getFullYear()}`;
     if(!eDraft[k])eDraft[k]=hM?dOv[k].map(s=>({...s})):BASE.filter(b=>b.day===di).map(s=>({s:s.s,e:s.e,staff:s.staff,type:'n'}));
     const draft=eDraft[k];
     ep+=`<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:3px">${lbl}${hM?`<span class="mod-badge">Modified</span>`:''}</div><div class="scp" style="margin-top:7px">Adjust times only — staff assignments are managed via the shift detail panel.</div>`;
@@ -2130,7 +2133,7 @@ function rStaff(){
   // Show all base shifts grouped by day
   const byDay={};BASE.forEach((s,i)=>{if(!byDay[s.day])byDay[s.day]=[];byDay[s.day].push({...s,bi:i});});
   Object.keys(byDay).sort((a,b)=>a-b).forEach(day=>{
-    b+=`<div style="font-size:10px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">${DAYS[day]}</div>`;
+    b+=`<div style="font-size:10px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">${BASE_DAY_NAMES[day]}</div>`;
     byDay[day].forEach(slot=>{
       b+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--surf2);font-size:12px;flex-wrap:wrap">`;
       b+=`<span style="min-width:90px;color:var(--muted);font-size:11px">${fmt(slot.s)}–${fmt(slot.e)}</span>`;
@@ -2153,7 +2156,7 @@ function reassignBase(baseIdx,newStaff){
   bH(); // recalculate HOL entries (cwh changes affect sick pay thresholds and leave allowances)
   rw();if(aOk){rH();rLeave();rSick();rStaff();}
   saveAll();
-  toast(`Rota updated: ${fmt(BASE[baseIdx].s)}–${fmt(BASE[baseIdx].e)} on ${DAYS[BASE[baseIdx].day]} now assigned to ${newStaff||'(unassigned)'}.`);
+  toast(`Rota updated: ${fmt(BASE[baseIdx].s)}–${fmt(BASE[baseIdx].e)} on ${BASE_DAY_NAMES[BASE[baseIdx].day]} now assigned to ${newStaff||'(unassigned)'}.`);
 }
 function rmSt(i){const n=STAFF[i].name;STAFF.splice(i,1);saveAll();toast(`${n} removed.`);rStaff();rw();}
 function addSt(){const name=document.getElementById('nsn').value.trim();const pin=gP('nsp');if(!name||pin.length!==4){toast('Enter name and 4-digit PIN');return;}if(STAFF.find(s=>s.name===name)){toast('Already exists');return;}STAFF.push({name,pin});HOL[name]={adj:0,taken:0,req:[],upd:[]};saveAll();toast(`${name} added.`);rStaff();rw();}
@@ -2197,7 +2200,7 @@ function renderWP(){
   </div>`;
   b+=`<div style="font-size:10px;color:var(--muted);font-weight:600;margin-bottom:8px">Click any day to jump to that week</div>`;
   b+=`<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px">`;
-  DAYS.forEach(d=>{b+=`<div style="font-size:8px;font-weight:700;text-align:center;color:var(--muted);padding:3px 0;text-transform:uppercase">${d[0]}</div>`;});
+  BASE_DAY_NAMES.forEach(d=>{b+=`<div style="font-size:8px;font-weight:700;text-align:center;color:var(--muted);padding:3px 0;text-transform:uppercase">${d[0]}</div>`;});
   for(let i=0;i<off;i++)b+=`<div></div>`;
   for(let d=1;d<=dim;d++){
     const dt=new Date(yr,mo,d);
