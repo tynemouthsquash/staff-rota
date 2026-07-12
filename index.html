@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota App v14.87 -->
+<!-- TSC Staff Rota App v14.89 -->
 <!-- Last updated: June 2026 -->
 <html lang="en">
 <head>
@@ -626,9 +626,10 @@ function rw(){
       // For holiday/sick show who is off, not who is covering
       const displayName=(s.type==='hol'||s.type==='sick')?`${s.staff} off`:(s.staff||'?');
       const dot=(!s.staff||s.type==='cover'||s.type==='hol'||s.type==='sick')?'<div class="cdot"></div>':'';
+      const hasNote=sOv[s.id]&&sOv[s.id].note;
       const isMyShift=sessionName&&s.staff===sessionName&&!['hol','sick','unpaid','cover','covered','swapped'].includes(s.type);
       const fn=swp?`openSwpV('${swp.id}')`:`openSh('${s.id}')`;
-      html+=`<div class="${cls}" style="top:${top.toFixed(1)}px;height:${Math.max(ht-2,22).toFixed(1)}px;${isMyShift?'filter:brightness(0.88);':''}" onclick="${fn}">${dot}<div class="sname">${displayName}</div>${ht>35?`<div class="stime">${fmt(s.s||s.start)}–${fmt(s.e||s.end)}</div>`:''}${ht>52?tag:''}</div>`;
+      html+=`<div class="${cls}" style="top:${top.toFixed(1)}px;height:${Math.max(ht-2,22).toFixed(1)}px;${isMyShift?'filter:brightness(0.88);':''}" onclick="${fn}">${dot}<div class="sname">${displayName}</div>${ht>35?`<div class="stime">${fmt(s.s||s.start)}–${fmt(s.e||s.end)}</div>`:''}${ht>52?tag:''}${hasNote?`<div style="position:absolute;top:3px;right:4px;font-size:9px;opacity:0.7">📋</div>`:''}</div>`;
     });
     html+='</div></div>';
   }
@@ -1083,6 +1084,19 @@ function openSh(id){
       b+=`<div class="mrow"><span class="mlbl">Hours</span><span class="mval">${sh(s).toFixed(1)} hrs</span></div>`;
       if(s.type==='modified')b+=`<div class="mrow"><span class="mlbl">Note</span><span class="mval" style="color:var(--amb)">Modified schedule</span></div>`;
       if(s.extraStaff&&s.extraStaff.length)b+=`<div class="mrow"><span class="mlbl">Extra staff</span><span class="mval">${s.extraStaff.join(', ')}</span></div>`;
+      // Shift note — visible to all, editable by admin only
+      const existingNote=(sOv[id]&&sOv[id].note)||'';
+      if(existingNote){
+        b+=`<div style="background:var(--gold-bg);border:1px solid var(--gbrd);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--navy);margin-top:8px;font-weight:600">&#128203; ${existingNote}</div>`;
+      }
+      if(aOk){
+        b+=`<div class="slbl" style="margin-top:10px">Shift note <span style="font-size:9px;font-weight:400;text-transform:none;letter-spacing:0">(visible to all staff)</span></div>`;
+        b+=`<div style="display:flex;gap:6px;align-items:center">`;
+        b+=`<input id="shiftNoteInput" placeholder="e.g. Party booking · Late licence" value="${existingNote}" style="flex:1;background:var(--surf);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12px;font-family:'Syne',sans-serif;color:var(--text)"/>`;
+        b+=`<button class="sbtn sg" onclick="saveShiftNote('${id}')">Save</button>`;
+        if(existingNote)b+=`<button class="sbtn sr" onclick="clearShiftNote('${id}')">&#10005;</button>`;
+        b+=`</div>`;
+      }
       // If logged-in staff member is viewing their own shift, offer quick holiday request
       if(sessionName&&s.staff===sessionName){
         const shiftDateMs=getShiftDateMs(s.id);
@@ -1098,6 +1112,19 @@ function openSh(id){
     }
   }
 
+  // Note visible to all; admin edit for cover/hol/sick/unpaid (standard shifts already have inline editor)
+  const _noteVal=(sOv[id]&&sOv[id].note)||'';
+  if(_noteVal&&!aOk){
+    b+=`<div style="background:var(--gold-bg);border:1px solid var(--gbrd);border-radius:6px;padding:8px 10px;font-size:12px;color:var(--navy);margin-top:10px;font-weight:600">&#128203; ${_noteVal}</div>`;
+  }
+  if(aOk&&s.type&&['cover','hol','sick','unpaid'].includes(s.type)){
+    b+=`<div class="slbl" style="margin-top:10px">Shift note <span style="font-size:9px;font-weight:400;text-transform:none;letter-spacing:0">(visible to all staff)</span></div>`;
+    b+=`<div style="display:flex;gap:6px;align-items:center">`;
+    b+=`<input id="shiftNoteInput" placeholder="e.g. Party booking · Late licence" value="${_noteVal}" style="flex:1;background:var(--surf);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12px;font-family:'Syne',sans-serif;color:var(--text)"/>`;
+    b+=`<button class="sbtn sg" onclick="saveShiftNote('${id}')">Save</button>`;
+    if(_noteVal)b+=`<button class="sbtn sr" onclick="clearShiftNote('${id}')">&#10005;</button>`;
+    b+=`</div>`;
+  }
   document.getElementById('shBody').innerHTML=b;document.getElementById('ovSh').classList.add('open');
 }
 
@@ -1231,6 +1258,24 @@ function quickHolidayReq(name,shiftKey,shiftHrs,dateStr,timeStr){
 function getShiftDateMs(id){
   try{const parts=id.split('-');return new Date(parts.slice(0,-1).join('-')).getTime();}catch(e){return 0;}
 }
+
+// SHIFT NOTES — admin only
+function saveShiftNote(id){
+  const val=document.getElementById('shiftNoteInput').value.trim();
+  if(!val){clearShiftNote(id);return;}
+  sOv[id]=Object.assign(sOv[id]||{},{note:val});
+  rw();saveAll();toast('Shift note saved.');
+  setTimeout(()=>openSh(id),100);
+}
+function clearShiftNote(id){
+  if(sOv[id]){
+    delete sOv[id].note;
+    if(!Object.keys(sOv[id]).length)delete sOv[id];
+  }
+  rw();saveAll();toast('Shift note removed.');
+  setTimeout(()=>openSh(id),100);
+}
+
 function openSwpV(swId){
   const sw=swpBrd.find(s=>s.id===swId);if(!sw)return;
   document.getElementById('shTitle').textContent='Swap Offer';
@@ -1534,7 +1579,42 @@ function swAT(t,btn){document.querySelectorAll('.at').forEach(x=>x.classList.rem
 function rH(){
   const shifts=getShifts(),wn=wkN(ws);
   const hrs={},cnt={};STAFF.forEach(({name})=>{hrs[name]=0;cnt[name]=0;});
-  shifts.forEach(s=>{if(s.staff){hrs[s.staff]=(hrs[s.staff]||0)+sh(s);cnt[s.staff]=(cnt[s.staff]||0)+1;}});
+  // Group shifts by staff and day, merge consecutive blocks, then apply lunch rule
+  shifts.forEach(s=>{if(s.staff)cnt[s.staff]=(cnt[s.staff]||0)+1;});
+  const dayGroups={};
+  shifts.forEach(s=>{
+    if(!s.staff)return;
+    if(!dayGroups[s.staff])dayGroups[s.staff]={};
+    if(!dayGroups[s.staff][s.day])dayGroups[s.staff][s.day]=[];
+    dayGroups[s.staff][s.day].push({s:s.s||s.start,e:s.e||s.end});
+  });
+  Object.keys(dayGroups).forEach(name=>{
+    let total=0;
+    Object.values(dayGroups[name]).forEach(dayShifts=>{
+      // Sort by start time
+      dayShifts.sort((a,b)=>pt(a.s)-pt(b.s));
+      // Merge adjacent/consecutive shifts (treat end of one = start of next as continuous)
+      const merged=[];
+      dayShifts.forEach(slot=>{
+        if(!merged.length){merged.push({...slot});return;}
+        const last=merged[merged.length-1];
+        const lastEv=pt(last.e)<pt(last.s)?pt(last.e)+24:pt(last.e);
+        const thisSv=pt(slot.s);
+        if(thisSv<=lastEv+0.17){// within 10 mins — treat as continuous
+          // Extend end of last merged block
+          const slotEv=pt(slot.e)<pt(slot.s)?pt(slot.e)+24:pt(slot.e);
+          if(slotEv>lastEv){
+            const h=Math.floor(slotEv%24),m=Math.round((slotEv%1)*60);
+            last.e=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+          }
+        } else {
+          merged.push({...slot});
+        }
+      });
+      merged.forEach(m=>{total+=sh(m);});
+    });
+    hrs[name]=+total.toFixed(2);
+  });
   let cards='',rows='';
   STAFF.forEach(({name})=>{
     const h=hrs[name],c=cnt[name];if(h===0&&!HOL[name])return;const r=rem(name);
