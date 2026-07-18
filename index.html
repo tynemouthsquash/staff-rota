@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota App v14.94 -->
+<!-- TSC Staff Rota App v14.95 -->
 <!-- Last updated: June 2026 -->
 <html lang="en">
 <head>
@@ -1679,13 +1679,26 @@ function rH(){
   const shifts=getShifts(),wn=wkN(ws);
   const hrs={},cnt={};STAFF.forEach(({name})=>{hrs[name]=0;cnt[name]=0;});
   // Group shifts by staff and day, merge consecutive blocks, then apply lunch rule
-  shifts.forEach(s=>{if(s.staff)cnt[s.staff]=(cnt[s.staff]||0)+1;});
+  shifts.forEach(s=>{
+    if(s.staff)cnt[s.staff]=(cnt[s.staff]||0)+1;
+    // Also count extra staff added to this shift
+    (s.extraStaff||[]).forEach(n=>{cnt[n]=(cnt[n]||0)+1;});
+  });
   const dayGroups={};
   shifts.forEach(s=>{
-    if(!s.staff)return;
-    if(!dayGroups[s.staff])dayGroups[s.staff]={};
-    if(!dayGroups[s.staff][s.day])dayGroups[s.staff][s.day]=[];
-    dayGroups[s.staff][s.day].push({s:s.s||s.start,e:s.e||s.end});
+    // Primary staff member
+    if(s.staff){
+      if(!dayGroups[s.staff])dayGroups[s.staff]={};
+      if(!dayGroups[s.staff][s.day])dayGroups[s.staff][s.day]=[];
+      dayGroups[s.staff][s.day].push({s:s.s||s.start,e:s.e||s.end});
+    }
+    // Extra staff — they work the same hours as the shift
+    (s.extraStaff||[]).forEach(n=>{
+      if(!n)return;
+      if(!dayGroups[n])dayGroups[n]={};
+      if(!dayGroups[n][s.day])dayGroups[n][s.day]=[];
+      dayGroups[n][s.day].push({s:s.s||s.start,e:s.e||s.end});
+    });
   });
   Object.keys(dayGroups).forEach(name=>{
     let total=0;
@@ -1715,8 +1728,11 @@ function rH(){
     hrs[name]=+total.toFixed(2);
   });
   let cards='',rows='';
-  STAFF.forEach(({name})=>{
-    const h=hrs[name],c=cnt[name];if(h===0&&!HOL[name])return;const r=rem(name);
+  // Collect all names who have hours this week (including ad-hoc extra staff)
+  const allNames=new Set(STAFF.map(s=>s.name));
+  Object.keys(dayGroups).forEach(n=>{if(hrs[n]||cnt[n])allNames.add(n);});
+  allNames.forEach(name=>{
+    const h=hrs[name]||0,c=cnt[name]||0;if(h===0&&!HOL[name])return;const r=rem(name);
     // Calculate paid holiday and unpaid leave hours separately for this week
     const wkStart=ws,wkEnd=new Date(ws.getTime()+7*864e5);
 
@@ -1786,6 +1802,7 @@ function rH(){
     if(sickHrsWk>0)notes.push(`${sickHrsWk.toFixed(1)}h sick`);
     if(bhDoubleHrsWk>0)notes.push(`${bhDoubleHrsWk.toFixed(1)}h BH 2×`);
     const noteCell=notes.length?`<span style="font-size:10px;color:var(--muted)">${notes.join(' · ')}</span>`:'—';
+    rows+=`<tr><td style="font-weight:600">${name}</td><td>${c}</td><td class="rv">${h.toFixed(1)}</td><td class="rv">${tot(name).toFixed(1)}</td><td class="rv">${(HOL[name]&&HOL[name].taken||0).toFixed(1)}</td><td class="rv" style="color:${r<8?'var(--red)':'var(--navy)'}">${r.toFixed(1)}</td><td>${noteCell}</td></tr>`;
   });
   document.getElementById('apH').innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">Rota week: ${wkL(ws)} · Payroll Week ${wkN(ws)||'—'} (${pwkL(ws)})</div><div class="rcards">${cards}</div><table class="rtb"><thead><tr><th>Name</th><th>Shifts</th><th>Hrs/wk</th><th>Leave allowance</th><th>Leave taken</th><th>Remaining</th><th>Shift notes</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
