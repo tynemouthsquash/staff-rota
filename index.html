@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota App v14.89 -->
+<!-- TSC Staff Rota App v14.94 -->
 <!-- Last updated: June 2026 -->
 <html lang="en">
 <head>
@@ -403,7 +403,7 @@ async function loadFromDB() {
     bH();
     if (!map.staff && !map.base) { seed(); saveAll(); }
   } catch(e) {
-    console.warn('DB load failed, running offline:', e);
+    console.warn('DB load failed, running offline. Error:', JSON.stringify(e), e.message||e);
     showToastError('Database unavailable — running offline.');
     bH(); seed();
   }
@@ -535,6 +535,71 @@ const today=new Date();today.setHours(0,0,0,0);
 let ws=gM(today),dOv={},sOv={},swpBrd=[],swpPnd=[];
 let HOL={};
 
+// ---- BANK HOLIDAYS ----
+let BH_DATES={}; // keyed by "YYYY-MM-DD", value: {title, closed:bool}
+let BH_LOADED=false;
+
+function loadBankHolidays(){
+  if(BH_LOADED)return;
+  // Hardcoded England & Wales bank holidays 2025-2027
+  // (CORS restrictions prevent fetching from gov.uk in the browser)
+  const dates=[
+    {date:'2025-01-01',title:"New Year's Day"},{date:'2025-04-18',title:'Good Friday'},
+    {date:'2025-04-21',title:'Easter Monday'},{date:'2025-05-05',title:'Early May bank holiday'},
+    {date:'2025-05-26',title:'Spring bank holiday'},{date:'2025-08-25',title:'Summer bank holiday'},
+    {date:'2025-12-25',title:'Christmas Day'},{date:'2025-12-26',title:'Boxing Day'},
+    {date:'2026-01-01',title:"New Year's Day"},{date:'2026-04-03',title:'Good Friday'},
+    {date:'2026-04-06',title:'Easter Monday'},{date:'2026-05-04',title:'Early May bank holiday'},
+    {date:'2026-05-25',title:'Spring bank holiday'},{date:'2026-08-31',title:'Summer bank holiday'},
+    {date:'2026-12-25',title:'Christmas Day'},{date:'2026-12-28',title:'Boxing Day (substitute)'},
+    {date:'2027-01-01',title:"New Year's Day"},{date:'2027-03-26',title:'Good Friday'},
+    {date:'2027-03-29',title:'Easter Monday'},{date:'2027-05-03',title:'Early May bank holiday'},
+    {date:'2027-05-31',title:'Spring bank holiday'},{date:'2027-08-30',title:'Summer bank holiday'},
+    {date:'2027-12-27',title:'Christmas Day (substitute)'},{date:'2027-12-28',title:'Boxing Day (substitute)'},
+  ];
+  dates.forEach(e=>{BH_DATES[e.date]={title:e.title,closed:false};});
+  BH_LOADED=true;
+}
+
+function isBH(date){
+  const k=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+  return BH_DATES[k]||null;
+}
+
+function isBHClosed(date){
+  const bh=isBH(date);return bh&&bh.closed;
+}
+
+// Hours calculation for a shift on a BH
+// Club opens at 4pm — hours before 16:00 = standard rate, 16:00+ = double time
+// If closed all day = standard rate for all hours
+// Returns {standard, double, total} payable hours
+function bhHours(s,date){
+  const bh=isBH(date);if(!bh)return null;
+  const ss=pt(s.s||s.start),ee2=pt(s.e||s.end)<pt(s.s||s.start)?pt(s.e||s.end)+24:pt(s.e||s.end);
+  const raw=ee2-ss;
+  if(bh.closed){
+    // Club closed all day — standard rate, no premium
+    const std=+(raw+(raw>=6.5?0.5:0)).toFixed(2);
+    return{standard:std,double:0,total:std,closed:true,title:bh.title};
+  }
+  const openTime=16; // 4pm
+  if(ee2<=openTime){
+    // Entire shift before opening — standard rate
+    const std=+(raw+(raw>=6.5?0.5:0)).toFixed(2);
+    return{standard:std,double:0,total:std,title:bh.title};
+  }
+  // Split at openTime
+  const stdRaw=Math.max(0,openTime-ss);
+  const dblRaw=Math.max(0,ee2-Math.max(ss,openTime));
+  const totalRaw=stdRaw+dblRaw;
+  const lunch=totalRaw>=6.5?0.5:0;
+  // Apportion lunch to standard portion first
+  const stdPay=+(stdRaw+Math.min(lunch,stdRaw)).toFixed(2);
+  const dblPay=+(dblRaw*2).toFixed(2); // double time
+  return{standard:+stdPay.toFixed(2),double:+dblPay.toFixed(2),total:+(stdPay+dblPay).toFixed(2),title:bh.title};
+}
+
 function bH(){STAFF.forEach(({name})=>{if(!HOL[name]){HOL[name]={adj:0,taken:0,req:[],upd:[]};} });}
 function tot(n){const h=HOL[n]||{};return+(cwhRaw(n)*4+(h.adjBaked||0)+(h.adj||0)).toFixed(1);}
 function rem(n){return+(tot(n)-((HOL[n]||{}).taken||0)).toFixed(1);}
@@ -604,9 +669,11 @@ function rw(){
     const isWE=(di===5||di===6);
     const tlH=BH*(isWE?3:2);
     const k=ddk(dt,di),ds=shifts.filter(s=>s.day===di);
+    const bhInfo=isBH(dt);
     const sts=ds.map(s=>pt(s.s||s.start)),ens=ds.map(s=>{const ev=pt(s.e||s.end);return ev<pt(s.s||s.start)?ev+24:ev;});
     const dS=sts.length?Math.min(...sts):12,dE=ens.length?Math.max(...ens):23.5,sp=Math.max(dE-dS,1);
-    html+=`<div><div class="dhead${tod?' tdcol':''}"><div class="dn">${DAYS[d]}</div><div class="dd">${tod?`<span class="tdnum">${dt.getDate()}</span>`:dt.getDate()}</div></div><div class="tl" style="height:${tlH}px">`;
+    const bhBadge=bhInfo?`<div style="font-size:8px;font-weight:800;color:${bhInfo.closed?'var(--red)':'var(--amb)'};background:${bhInfo.closed?'var(--rdbg)':'var(--gold-bg)'};border:1px solid ${bhInfo.closed?'var(--rdbrd)':'var(--gbrd)'};border-radius:3px;padding:1px 4px;margin-top:2px;line-height:1.2">${bhInfo.closed?'CLOSED':'BH'}</div>`:'';
+    html+=`<div><div class="dhead${tod?' tdcol':''}" style="${bhInfo?'border-bottom:2px solid '+(bhInfo.closed?'var(--red)':'var(--amb)'):''}"><div class="dn">${DAYS[d]}</div><div class="dd">${tod?`<span class="tdnum">${dt.getDate()}</span>`:dt.getDate()}</div>${bhBadge}</div><div class="tl" style="height:${tlH}px">`;
     if(!ds.length)html+=`<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--muted)">No shifts</div>`;
     ds.forEach(s=>{
       const sH=pt(s.s||s.start),eH=pt(s.e||s.end)<sH?pt(s.e||s.end)+24:pt(s.e||s.end);
@@ -626,9 +693,11 @@ function rw(){
       // For holiday/sick show who is off, not who is covering
       const displayName=(s.type==='hol'||s.type==='sick')?`${s.staff} off`:(s.staff||'?');
       const dot=(!s.staff||s.type==='cover'||s.type==='hol'||s.type==='sick')?'<div class="cdot"></div>':'';
+      const bhPay=bhInfo&&s.staff&&!['hol','sick','unpaid','cover'].includes(s.type)?bhHours(s,dt):null;
+      if(bhPay&&bhPay.double>0)tag=`<span class="stag" style="background:#fff3e0;color:#7a4200">2× BH</span>`;
       const hasNote=sOv[s.id]&&sOv[s.id].note;
       const isMyShift=sessionName&&s.staff===sessionName&&!['hol','sick','unpaid','cover','covered','swapped'].includes(s.type);
-      const fn=swp?`openSwpV('${swp.id}')`:`openSh('${s.id}')`;
+      const fn=swp?`openSwpV('${swp.id}')`:`openSh('${s.id}',${dt.getTime()})`;
       html+=`<div class="${cls}" style="top:${top.toFixed(1)}px;height:${Math.max(ht-2,22).toFixed(1)}px;${isMyShift?'filter:brightness(0.88);':''}" onclick="${fn}">${dot}<div class="sname">${displayName}</div>${ht>35?`<div class="stime">${fmt(s.s||s.start)}–${fmt(s.e||s.end)}</div>`:''}${ht>52?tag:''}${hasNote?`<div style="position:absolute;top:3px;right:4px;font-size:9px;opacity:0.7">📋</div>`:''}</div>`;
     });
     html+='</div></div>';
@@ -978,8 +1047,10 @@ function cancelSwapVol(swId,name){
   rw();saveAll();toast('Exchange offer withdrawn.');
   openDash(name);
 }
-function openSh(id){
+function openSh(id,dateMs){
   const s=getShifts().find(x=>x.id===id);if(!s)return;
+  const shiftDate=dateMs?new Date(dateMs):null;
+  const bhPay=shiftDate&&s.staff?bhHours(s,shiftDate):null;
   document.getElementById('shTitle').textContent=`${BASE_DAY_NAMES[s.day]} · ${fmt(s.s||s.start)}–${fmt(s.e||s.end)}`;
   let b='';
 
@@ -1082,6 +1153,19 @@ function openSh(id){
       b+=`<div class="mrow"><span class="mlbl">Staff</span><span class="mval">${s.staff}</span></div>`;
       b+=`<div class="mrow"><span class="mlbl">Time</span><span class="mval">${fmt(s.s||s.start)} – ${fmt(s.e||s.end)}</span></div>`;
       b+=`<div class="mrow"><span class="mlbl">Hours</span><span class="mval">${sh(s).toFixed(1)} hrs</span></div>`;
+      if(bhPay){
+        if(bhPay.closed){
+          b+=`<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;padding:8px 10px;font-size:11px;color:#7a4200;margin-top:6px"><strong>🏖 ${bhPay.title}</strong> — Club closed all day. Standard rate applies.</div>`;
+        } else {
+          b+=`<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;padding:8px 10px;font-size:11px;color:#7a4200;margin-top:6px">`;
+          b+=`<strong>🏖 ${bhPay.title}</strong> — Double time from 4pm<br>`;
+          if(bhPay.standard>0)b+=`Standard rate: ${bhPay.standard.toFixed(1)}h`;
+          if(bhPay.standard>0&&bhPay.double>0)b+=` · `;
+          if(bhPay.double>0)b+=`Double time: ${bhPay.double.toFixed(1)}h`;
+          b+=`<br><strong>Total payable: ${bhPay.total.toFixed(1)} hrs</strong>`;
+          b+=`</div>`;
+        }
+      }
       if(s.type==='modified')b+=`<div class="mrow"><span class="mlbl">Note</span><span class="mval" style="color:var(--amb)">Modified schedule</span></div>`;
       if(s.extraStaff&&s.extraStaff.length)b+=`<div class="mrow"><span class="mlbl">Extra staff</span><span class="mval">${s.extraStaff.join(', ')}</span></div>`;
       // Shift note — visible to all, editable by admin only
@@ -1123,6 +1207,13 @@ function openSh(id){
     b+=`<input id="shiftNoteInput" placeholder="e.g. Party booking · Late licence" value="${_noteVal}" style="flex:1;background:var(--surf);border:1px solid var(--border);border-radius:6px;padding:8px;font-size:12px;font-family:'Syne',sans-serif;color:var(--text)"/>`;
     b+=`<button class="sbtn sg" onclick="saveShiftNote('${id}')">Save</button>`;
     if(_noteVal)b+=`<button class="sbtn sr" onclick="clearShiftNote('${id}')">&#10005;</button>`;
+    b+=`</div>`;
+  }
+  // BH admin controls
+  if(aOk&&bhPay&&dateMs){
+    b+=`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">`;
+    b+=`<span style="font-size:11px;font-weight:700;color:${bhPay.closed?'var(--red)':'var(--amb)'}">🏖 ${bhPay.title} — ${bhPay.closed?'Club closed':'Club open (4pm–close double time)'}</span>`;
+    b+=`<button class="sbtn ${bhPay.closed?'sg':'sr'}" onclick="toggleBHClosed(${dateMs})">${bhPay.closed?'Mark as open':'Mark as closed'}</button>`;
     b+=`</div>`;
   }
   document.getElementById('shBody').innerHTML=b;document.getElementById('ovSh').classList.add('open');
@@ -1257,6 +1348,14 @@ function quickHolidayReq(name,shiftKey,shiftHrs,dateStr,timeStr){
 // Get the date milliseconds from a shift id (format: "Fri Jun 27 2025-3")
 function getShiftDateMs(id){
   try{const parts=id.split('-');return new Date(parts.slice(0,-1).join('-')).getTime();}catch(e){return 0;}
+}
+
+// BANK HOLIDAY ADMIN
+function toggleBHClosed(dateMs){
+  const dt=new Date(dateMs);
+  const k=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+  if(BH_DATES[k])BH_DATES[k].closed=!BH_DATES[k].closed;
+  rw();toast(BH_DATES[k]&&BH_DATES[k].closed?'Club marked as closed — standard rate applies.':'Club open on this bank holiday — double time from 4pm.');
 }
 
 // SHIFT NOTES — admin only
@@ -1656,26 +1755,37 @@ function rH(){
     // In that case holHrsWk reflects only the paid portion — no adjustment needed
     // since req.hours already stores only the paid amount
 
-    // Card — worked hours and holiday hours at equal hierarchy for payroll
+    // BH double-time hours this week
+    let bhDoubleHrsWk=0;
+    shifts.forEach(s=>{
+      if(s.staff!==name)return;
+      try{
+        const parts=s.id.split('-');const dt3=new Date(parts.slice(0,-1).join('-'));
+        if(isNaN(dt3.getTime()))return;
+        const bp=bhHours(s,dt3);
+        if(bp&&bp.double>0)bhDoubleHrsWk=+(bhDoubleHrsWk+bp.double).toFixed(2);
+      }catch(e){}
+    });
+    // Card — worked / holiday / BH at equal hierarchy
     let cardContent='';
-    if(holHrsWk>0){
-      cardContent=`<div style="display:flex;justify-content:space-around;width:100%;margin-top:4px">
-        <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--navy)">${h.toFixed(1)}</div><div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase">Worked</div></div>
-        <div style="width:1px;background:var(--border)"></div>
-        <div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--pur)">${holHrsWk.toFixed(1)}</div><div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase">Holiday</div></div>
-      </div>`;
+    const hasExtra=holHrsWk>0||bhDoubleHrsWk>0;
+    if(hasExtra){
+      cardContent=`<div style="display:flex;justify-content:space-around;width:100%;margin-top:4px;gap:4px;flex-wrap:wrap">`;
+      cardContent+=`<div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--navy)">${h.toFixed(1)}</div><div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase">Worked</div></div>`;
+      if(holHrsWk>0){cardContent+=`<div style="width:1px;background:var(--border)"></div><div style="text-align:center"><div style="font-size:16px;font-weight:800;color:var(--pur)">${holHrsWk.toFixed(1)}</div><div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase">Holiday</div></div>`;}
+      if(bhDoubleHrsWk>0){cardContent+=`<div style="width:1px;background:var(--border)"></div><div style="text-align:center"><div style="font-size:16px;font-weight:800;color:#7a4200">${bhDoubleHrsWk.toFixed(1)}</div><div style="font-size:9px;color:var(--muted);font-weight:600;text-transform:uppercase">BH 2×</div></div>`;}
+      cardContent+=`</div>`;
     } else {
       cardContent=`<div class="rch">${h.toFixed(1)}</div><div class="rcl">hrs this week</div>`;
     }
     cards+=`<div class="rc"><div class="rcn">${name}</div>${cardContent}<div style="font-size:10px;color:var(--muted);margin-top:4px">${c} shift${c!==1?'s':''}</div></div>`;
-
     // Shift notes column
     let notes=[];
     if(holHrsWk>0)notes.push(`${holHrsWk.toFixed(1)}h holiday`);
     if(unpaidHrsWk>0)notes.push(`${unpaidHrsWk.toFixed(1)}h unpaid`);
     if(sickHrsWk>0)notes.push(`${sickHrsWk.toFixed(1)}h sick`);
+    if(bhDoubleHrsWk>0)notes.push(`${bhDoubleHrsWk.toFixed(1)}h BH 2×`);
     const noteCell=notes.length?`<span style="font-size:10px;color:var(--muted)">${notes.join(' · ')}</span>`:'—';
-    rows+=`<tr><td style="font-weight:600">${name}</td><td>${c}</td><td class="rv">${h.toFixed(1)}</td><td class="rv">${tot(name).toFixed(1)}</td><td class="rv">${(HOL[name]&&HOL[name].taken||0).toFixed(1)}</td><td class="rv" style="color:${r<8?'var(--red)':'var(--navy)'}">${r.toFixed(1)}</td><td>${noteCell}</td></tr>`;
   });
   document.getElementById('apH').innerHTML=`<div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600">Rota week: ${wkL(ws)} · Payroll Week ${wkN(ws)||'—'} (${pwkL(ws)})</div><div class="rcards">${cards}</div><table class="rtb"><thead><tr><th>Name</th><th>Shifts</th><th>Hrs/wk</th><th>Leave allowance</th><th>Leave taken</th><th>Remaining</th><th>Shift notes</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -2351,6 +2461,8 @@ function loginBtnClick(){
 }
 
 // Boot: load from database (falls back to demo data if not configured)
+// Boot
+loadBankHolidays(); // synchronous — no network request
 loadFromDB().then(()=>subscribeRealtime());
 </script>
 </body>
