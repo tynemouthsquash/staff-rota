@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota App v14.95 -->
+<!-- TSC Staff Rota App v14.96 -->
 <!-- Last updated: June 2026 -->
 <html lang="en">
 <head>
@@ -1077,7 +1077,7 @@ function openSh(id,dateMs){
     b+=`<div class="mrow" style="padding:5px 0"><span class="mlbl">Covering staff</span><span class="mval" style="color:var(--green);font-weight:700">${s.staff}</span></div>`;
     b+=`<div class="mrow" style="padding:5px 0;border-bottom:none"><span class="mlbl">Time</span><span class="mval">${fmt(s.s||s.start)} – ${fmt(s.e||s.end)}</span></div>`;
     b+=`</div>`;
-    if(s.extraStaff&&s.extraStaff.length)b+=`<div class="mrow" style="margin-top:6px"><span class="mlbl">Extra staff</span><span class="mval">${s.extraStaff.join(', ')}</span></div>`;
+    if(s.extraStaff&&s.extraStaff.length)b+=`<div class="mrow" style="margin-top:6px"><span class="mlbl">Extra staff</span><span class="mval">${s.extraStaff.map(x=>typeof x==='string'?x:`${x.name} (${fmt(x.s)}–${fmt(x.e)})`).join(', ')}</span></div>`;
     b+=`<button class="mbg" style="margin-top:10px" onclick="openAddSt('${id}')">+ Add / Replace Staff</button>`;
     b+=`<button class="rsbtn" style="margin-top:5px" onclick="confirmResetShift('${id}')">&#8635; Reset to default rota</button>`;
 
@@ -1098,7 +1098,7 @@ function openSh(id,dateMs){
     if(s.swapNote){
       b+=`<div class="ibx" style="margin-top:10px;font-size:10px">&#128257; ${s.swapNote}</div>`;
     }
-    if(s.extraStaff&&s.extraStaff.length)b+=`<div class="mrow" style="margin-top:6px"><span class="mlbl">Extra staff</span><span class="mval">${s.extraStaff.join(', ')}</span></div>`;
+    if(s.extraStaff&&s.extraStaff.length)b+=`<div class="mrow" style="margin-top:6px"><span class="mlbl">Extra staff</span><span class="mval">${s.extraStaff.map(x=>typeof x==='string'?x:`${x.name} (${fmt(x.s)}–${fmt(x.e)})`).join(', ')}</span></div>`;
     b+=`<button class="mbg" style="margin-top:10px" onclick="openAddSt('${id}')">+ Add / Replace Staff</button>`;
     b+=`<button class="rsbtn" style="margin-top:5px" onclick="confirmResetShift('${id}')">&#8635; Reset to default rota</button>`;
 
@@ -1167,7 +1167,7 @@ function openSh(id,dateMs){
         }
       }
       if(s.type==='modified')b+=`<div class="mrow"><span class="mlbl">Note</span><span class="mval" style="color:var(--amb)">Modified schedule</span></div>`;
-      if(s.extraStaff&&s.extraStaff.length)b+=`<div class="mrow"><span class="mlbl">Extra staff</span><span class="mval">${s.extraStaff.join(', ')}</span></div>`;
+      if(s.extraStaff&&s.extraStaff.length)b+=`<div class="mrow"><span class="mlbl">Extra staff</span><span class="mval">${s.extraStaff.map(x=>typeof x==='string'?x:`${x.name} (${fmt(x.s)}–${fmt(x.e)})`).join(', ')}</span></div>`;
       // Shift note — visible to all, editable by admin only
       const existingNote=(sOv[id]&&sOv[id].note)||'';
       if(existingNote){
@@ -1312,29 +1312,75 @@ function doCovHol(id,origStaff){
 }
 
 function openAddSt(id){
-  const s=getShifts().find(x=>x.id===id);const ex=(s&&s.extraStaff)||[];
+  const s=getShifts().find(x=>x.id===id);
+  const ex=(s&&s.extraStaff)||[];
+  const shiftS=s?s.s||s.start:'12:00';
+  const shiftE=s?s.e||s.end:'23:30';
   document.getElementById('shTitle').textContent='Add / Replace Staff';
   let b=`<div class="slbl">Replace ${s&&s.staff} for this shift</div>`;
   b+=`<div class="mf"><select id="rplS"><option value="">From staff list...</option>${STAFF.filter(x=>x.name!==(s&&s.staff)).map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
   b+=`<div class="mf"><input id="rplF" placeholder="Or type name (ad-hoc staff)"/></div>`;
   b+=`<button class="mba" onclick="doRpl('${id}')">Replace for this shift</button>`;
-  if(ex.length){b+=`<div class="slbl" style="margin-top:10px">Current extra staff</div>`;ex.forEach((n,i)=>{b+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--surf2);font-size:12px"><span style="font-weight:600">${n}</span><button class="sbtn sr" onclick="rmEx('${id}',${i})">Remove</button></div>`;});}
+  if(ex.length){
+    b+=`<div class="slbl" style="margin-top:10px">Current extra staff</div>`;
+    ex.forEach((x,i)=>{
+      const xName=typeof x==='string'?x:x.name;
+      const xS=typeof x==='string'?shiftS:x.s;
+      const xE=typeof x==='string'?shiftE:x.e;
+      b+=`<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--surf2);font-size:12px">`;
+      b+=`<div style="display:flex;align-items:center;gap:6px;flex:1">`;
+      b+=`<span style="font-weight:600;min-width:70px">${xName}</span>`;
+      b+=`<input type="time" value="${xS}" onchange="updateExTime('${id}',${i},'s',this.value)" style="background:var(--surf);border:1px solid var(--border);border-radius:5px;padding:3px 5px;font-size:11px;font-family:'Syne',sans-serif;color:var(--text)"/>`;
+      b+=`<span style="font-size:10px;color:var(--muted)">–</span>`;
+      b+=`<input type="time" value="${xE}" onchange="updateExTime('${id}',${i},'e',this.value)" style="background:var(--surf);border:1px solid var(--border);border-radius:5px;padding:3px 5px;font-size:11px;font-family:'Syne',sans-serif;color:var(--text)"/>`;
+      b+=`<span style="font-size:10px;color:var(--muted)">${sh({s:xS,e:xE}).toFixed(1)}h</span>`;
+      b+=`</div>`;
+      b+=`<button class="sbtn sr" style="flex-shrink:0;margin-left:6px" onclick="rmEx('${id}',${i})">Remove</button>`;
+      b+=`</div>`;
+    });
+  }
   b+=`<div class="slbl" style="margin-top:${ex.length?'10px':'0'}">Add additional staff</div>`;
-  b+=`<div class="mf"><select id="xS"><option value="">Select...</option>${STAFF.filter(x=>x.name!==(s&&s.staff)&&!ex.includes(x.name)).map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
-  b+=`<button class="mbgn" onclick="addEx('${id}',false)">Add from List</button>`;
+  b+=`<div class="mf"><select id="xS"><option value="">Select...</option>${STAFF.filter(x=>x.name!==(s&&s.staff)&&!ex.some(e=>(typeof e==='string'?e:e.name)===x.name)).map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
   b+=`<div class="mf"><input id="xF" placeholder="Or type name (casual/ad-hoc)" maxlength="40"/></div>`;
-  b+=`<button class="mbg" onclick="addEx('${id}',true)">Add by Name</button>`;
+  b+=`<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">`;
+  b+=`<div style="display:flex;flex-direction:column;gap:2px;flex:1"><label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Start</label><input type="time" id="xStart" value="${shiftS}" style="background:var(--surf);border:1px solid var(--border);border-radius:5px;padding:5px;font-size:12px;font-family:'Syne',sans-serif;color:var(--text)"/></div>`;
+  b+=`<div style="display:flex;flex-direction:column;gap:2px;flex:1"><label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">End</label><input type="time" id="xEnd" value="${shiftE}" style="background:var(--surf);border:1px solid var(--border);border-radius:5px;padding:5px;font-size:12px;font-family:'Syne',sans-serif;color:var(--text)"/></div>`;
+  b+=`</div>`;
+  b+=`<button class="mbgn" onclick="addEx('${id}',false)">Add from List</button>`;
+  b+=`<button class="mbg" style="margin-top:4px" onclick="addEx('${id}',true)">Add by Name</button>`;
   document.getElementById('shBody').innerHTML=b;
 }
-function doRpl(id){
-  const n=document.getElementById('rplF').value.trim()||document.getElementById('rplS').value;
-  if(!n){toast('Enter a replacement name');return;}
+
+function addEx(id,f){
+  const n=f?document.getElementById('xF').value.trim():document.getElementById('xS').value;
+  if(!n){toast(f?'Enter a name':'Select staff');return;}
+  const xS=document.getElementById('xStart').value||'12:00';
+  const xE=document.getElementById('xEnd').value||'23:30';
   const s=getShifts().find(x=>x.id===id);
-  sOv[id]=Object.assign(sOv[id]||{},{staff:n,type:'covered',origStaff:s?s.staff:'(unknown)'});
-  cm('ovSh');rw();saveAll();toast(`Staff replaced with ${n}.`);
+  const ex=(s&&s.extraStaff)||[];
+  if(ex.some(e=>(typeof e==='string'?e:e.name)===n)){toast('Already added');return;}
+  // Store as object with name and custom hours
+  sOv[id]=Object.assign(sOv[id]||{},{extraStaff:[...ex,{name:n,s:xS,e:xE}],type:'ev'});
+  cm('ovSh');rw();saveAll();toast(`${n} added (${fmt(xS)}–${fmt(xE)}).`);
 }
-function addEx(id,f){const n=f?document.getElementById('xF').value.trim():document.getElementById('xS').value;if(!n){toast(f?'Enter a name':'Select staff');return;}const s=getShifts().find(x=>x.id===id);const ex=(s&&s.extraStaff)||[];if(ex.includes(n)){toast('Already added');return;}sOv[id]=Object.assign(sOv[id]||{},{extraStaff:[...ex,n],type:'ev'});cm('ovSh');rw();saveAll();toast(`${n} added to shift.`);}
-function rmEx(id,i){const s=getShifts().find(x=>x.id===id);const arr=[...(s&&s.extraStaff||[])];arr.splice(i,1);sOv[id]=Object.assign(sOv[id]||{},{extraStaff:arr,type:arr.length?'ev':'n'});cm('ovSh');rw();saveAll();}
+
+function rmEx(id,i){
+  const s=getShifts().find(x=>x.id===id);
+  const arr=[...(s&&s.extraStaff||[])];
+  arr.splice(i,1);
+  sOv[id]=Object.assign(sOv[id]||{},{extraStaff:arr,type:arr.length?'ev':'n'});
+  cm('ovSh');rw();saveAll();
+}
+
+function updateExTime(id,i,field,val){
+  const s=getShifts().find(x=>x.id===id);
+  const arr=[...(s&&s.extraStaff||[])];
+  if(!arr[i])return;
+  if(typeof arr[i]==='string')arr[i]={name:arr[i],s:s.s||s.start,e:s.e||s.end};
+  arr[i][field]=val;
+  sOv[id]=Object.assign(sOv[id]||{},{extraStaff:arr});
+  saveAll();
+}
 
 // Quick holiday request from shift detail — pre-selects just that one shift
 function quickHolidayReq(name,shiftKey,shiftHrs,dateStr,timeStr){
@@ -1682,7 +1728,7 @@ function rH(){
   shifts.forEach(s=>{
     if(s.staff)cnt[s.staff]=(cnt[s.staff]||0)+1;
     // Also count extra staff added to this shift
-    (s.extraStaff||[]).forEach(n=>{cnt[n]=(cnt[n]||0)+1;});
+    (s.extraStaff||[]).forEach(x=>{const n=typeof x==='string'?x:x.name;if(n)cnt[n]=(cnt[n]||0)+1;});
   });
   const dayGroups={};
   shifts.forEach(s=>{
@@ -1692,12 +1738,15 @@ function rH(){
       if(!dayGroups[s.staff][s.day])dayGroups[s.staff][s.day]=[];
       dayGroups[s.staff][s.day].push({s:s.s||s.start,e:s.e||s.end});
     }
-    // Extra staff — they work the same hours as the shift
-    (s.extraStaff||[]).forEach(n=>{
+    // Extra staff — use their custom hours if set, otherwise shift hours
+    (s.extraStaff||[]).forEach(x=>{
+      const n=typeof x==='string'?x:x.name;
+      const xs=typeof x==='string'?s.s||s.start:x.s;
+      const xe=typeof x==='string'?s.e||s.end:x.e;
       if(!n)return;
       if(!dayGroups[n])dayGroups[n]={};
       if(!dayGroups[n][s.day])dayGroups[n][s.day]=[];
-      dayGroups[n][s.day].push({s:s.s||s.start,e:s.e||s.end});
+      dayGroups[n][s.day].push({s:xs,e:xe});
     });
   });
   Object.keys(dayGroups).forEach(name=>{
