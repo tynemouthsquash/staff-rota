@@ -1,6 +1,6 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota App v14.96 -->
-<!-- Last updated: June 2026 -->
+<!-- TSC Staff Rota App v15.20 -->
+<!-- Last updated: August 2026 -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -377,6 +377,7 @@ function saveAll() {
   dbSave('swpBrd',  swpBrd);
   dbSave('swpPnd',  swpPnd);
   dbSave('hol',     HOL);
+  dbSave('baseChanges', BASE_CHANGES);
 }
 
 // Load all state from Supabase on startup
@@ -384,7 +385,7 @@ async function loadFromDB() {
   initSB(); // ensure client is ready
   if (!_sb) {
     if (SUPABASE_URL === 'YOUR_SUPABASE_URL') showSetupBanner();
-    bH(); seed(); rw();
+    bH(); seed(); runDataMigrations(); rw();
     return;
   }
   showLoader('Loading rota data...');
@@ -400,12 +401,17 @@ async function loadFromDB() {
     if (map.swpBrd) swpBrd = map.swpBrd;
     if (map.swpPnd) swpPnd = map.swpPnd;
     if (map.hol)    HOL    = map.hol;
-    bH();
-    if (!map.staff && !map.base) { seed(); saveAll(); }
+    if (map.baseChanges) BASE_CHANGES = Array.isArray(map.baseChanges)?map.baseChanges:[];
+      bH();
+    const isFresh=!map.staff&&!map.base;
+    if(isFresh)seed();
+    const migrated=runDataMigrations();
+    const dueChanges=processDueBaseChanges(false);
+    if(isFresh||migrated||dueChanges)saveAll();
   } catch(e) {
     console.warn('DB load failed, running offline. Error:', JSON.stringify(e), e.message||e);
     showToastError('Database unavailable — running offline.');
-    bH(); seed();
+    bH(); seed(); runDataMigrations();processDueBaseChanges(false);
   }
   hideLoader();
   ws = gM(today);
@@ -416,7 +422,7 @@ async function loadFromDB() {
 function subscribeRealtime() {
   if (!_sb) return;
   _sb.channel('rota_state_changes')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rota_state' },
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'rota_state' },
       async (payload) => {
         const { key, value } = payload.new;
         // Apply remote change to local state (skip if we're the source)
@@ -436,6 +442,7 @@ function applyRemoteState(key, value) {
   if (key === 'swpBrd') swpBrd = value;
   if (key === 'swpPnd') swpPnd = value;
   if (key === 'hol')    HOL    = value;
+  if (key === 'baseChanges') BASE_CHANGES = Array.isArray(value)?value:[];
 }
 
 function showLoader(msg) {
@@ -489,6 +496,10 @@ let BASE=[
   {day:5,s:'09:00',e:'14:00',staff:'Kath'},{day:5,s:'14:00',e:'19:00',staff:'Emma'},{day:5,s:'19:00',e:'23:30',staff:'Claire'},
   {day:6,s:'10:00',e:'14:30',staff:'Claire'},{day:6,s:'14:30',e:'19:00',staff:'Emily'},{day:6,s:'19:00',e:'23:00',staff:'James'}
 ];
+
+// Effective-dated changes to standard rota slots. Pending future changes do not mutate BASE
+// until their effective date, but getDShifts() uses them when rendering future weeks.
+let BASE_CHANGES=[];
 
 function pt(t){const[h,m]=t.split(':').map(Number);return h+m/60;}
 // sh() returns payable hours: raw duration + 0.5hr lunch allowance for shifts >= 6.5hrs
@@ -600,9 +611,172 @@ function bhHours(s,date){
   return{standard:+stdPay.toFixed(2),double:+dblPay.toFixed(2),total:+(stdPay+dblPay).toFixed(2),title:bh.title};
 }
 
-function bH(){STAFF.forEach(({name})=>{if(!HOL[name]){HOL[name]={adj:0,taken:0,req:[],upd:[]};} });}
-function tot(n){const h=HOL[n]||{};return+(cwhRaw(n)*4+(h.adjBaked||0)+(h.adj||0)).toFixed(1);}
+function bH(){STAFF.forEach(({name})=>{if(!HOL[name]){HOL[name]={adj:0,taken:0,req:[],upd:[],contractProrata:0};}else if(typeof HOL[name].contractProrata!=='number')HOL[name].contractProrata=0;});}
+function contractLeaveBase(n){const h=HOL[n]||{};return+(cwhRaw(n)*4+(h.contractProrata||0)).toFixed(1);}
+function tot(n){const h=HOL[n]||{};return+(contractLeaveBase(n)+(h.adjBaked||0)+(h.adj||0)).toFixed(1);}
 function rem(n){return+(tot(n)-((HOL[n]||{}).taken||0)).toFixed(1);}
+
+// Leave year used for pro-rating permanent contracted-hours changes: 1 Apr to 31 Mar.
+function leaveYearBounds(d){
+  const dt=new Date(d);dt.setHours(0,0,0,0);
+  let y=dt.getFullYear();
+  if(dt.getMonth()<3)y--;
+  return{start:new Date(y,3,1),end:new Date(y+1,3,1)};
+}
+function leaveYearRemainingFraction(d){
+  const dt=new Date(d);dt.setHours(0,0,0,0);
+  const{start,end}=leaveYearBounds(dt);
+  const total=(end-start)/864e5;
+  const remain=Math.max(0,Math.min(total,(end-dt)/864e5));
+  return total?remain/total:0;
+}
+function applyContractProrata(oldStaff,newStaff,slot,effectiveDate){
+  if(!slot||oldStaff===newStaff)return;
+  bH();
+  const fullYear=shRaw(slot)*4;
+  const remaining=leaveYearRemainingFraction(effectiveDate);
+  const correction=+(fullYear*(1-remaining)).toFixed(1);
+  if(oldStaff&&HOL[oldStaff])HOL[oldStaff].contractProrata=+((HOL[oldStaff].contractProrata||0)+correction).toFixed(1);
+  if(newStaff&&HOL[newStaff])HOL[newStaff].contractProrata=+((HOL[newStaff].contractProrata||0)-correction).toFixed(1);
+}
+
+// Preserve the previous assignment on historic dates before a permanent rota transfer.
+// This stops a BASE change from rewriting old payroll weeks.
+function preserveAssignmentBeforeDate(baseIdx,oldStaff,effectiveDate){
+  const slot=BASE[baseIdx];if(!slot||!oldStaff)return;
+  const end=new Date(effectiveDate);end.setHours(0,0,0,0);
+  const cur=new Date(end);cur.setFullYear(cur.getFullYear()-2);cur.setHours(0,0,0,0);
+  while(cur<end){
+    const di=cur.getDay()===0?6:cur.getDay()-1;
+    if(di===slot.day){
+      const id=`${cur.toDateString()}-${baseIdx}`;
+      if(!sOv[id])sOv[id]={staff:oldStaff,historical:true};
+      else if(typeof sOv[id].staff==='undefined')sOv[id].staff=oldStaff;
+    }
+    cur.setDate(cur.getDate()+1);
+  }
+}
+function localDateValue(d){return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+
+function parseLocalDateValue(v){
+  if(!v)return null;
+  const m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!m)return null;
+  const d=new Date(+m[1],+m[2]-1,+m[3]);d.setHours(0,0,0,0);return d;
+}
+function effectiveBaseStaff(baseIdx,date){
+  const slot=BASE[baseIdx];if(!slot)return'';
+  const dt=new Date(date);dt.setHours(0,0,0,0);
+  let staff=slot.staff||'';
+  const changes=(BASE_CHANGES||[]).filter(c=>!c.applied&&c.baseIdx===baseIdx).slice().sort((a,b)=>String(a.effective).localeCompare(String(b.effective)));
+  changes.forEach(c=>{const ed=parseLocalDateValue(c.effective);if(ed&&ed<=dt)staff=c.staff||'';});
+  return staff;
+}
+function projectedBaseStaffBefore(baseIdx,effectiveDate){
+  const target=new Date(effectiveDate);target.setHours(0,0,0,0);
+  let staff=(BASE[baseIdx]&&BASE[baseIdx].staff)||'';
+  const changes=(BASE_CHANGES||[]).filter(c=>!c.applied&&c.baseIdx===baseIdx).slice().sort((a,b)=>String(a.effective).localeCompare(String(b.effective)));
+  changes.forEach(c=>{const ed=parseLocalDateValue(c.effective);if(ed&&ed<target)staff=c.staff||'';});
+  return staff;
+}
+function processDueBaseChanges(shouldSave=true){
+  if(!Array.isArray(BASE_CHANGES)||!BASE_CHANGES.length)return false;
+  const now=new Date();now.setHours(0,0,0,0);
+  let changed=false;
+  const due=BASE_CHANGES.filter(c=>!c.applied).slice().sort((a,b)=>String(a.effective).localeCompare(String(b.effective)));
+  due.forEach(c=>{
+    const effective=parseLocalDateValue(c.effective);if(!effective||effective>now)return;
+    const slot=BASE[c.baseIdx];if(!slot){c.applied=true;c.appliedAt=new Date().toISOString();changed=true;return;}
+    const oldStaff=slot.staff||'',nextStaff=c.staff||'';
+    if(oldStaff!==nextStaff){
+      preserveAssignmentBeforeDate(c.baseIdx,oldStaff,effective);
+      applyContractProrata(oldStaff,nextStaff,slot,effective);
+      slot.staff=nextStaff;
+    }
+    c.applied=true;c.appliedAt=new Date().toISOString();changed=true;
+  });
+  if(changed){bH();if(shouldSave)saveAll();}
+  return changed;
+}
+function scheduleBaseChange(baseIdx,newStaff,effectiveVal){
+  if(baseIdx<0||baseIdx>=BASE.length)return;
+  const effective=parseLocalDateValue(effectiveVal);if(!effective){toast('Choose a valid effective date');return;}
+  const now=new Date();now.setHours(0,0,0,0);
+  if(effective<now){toast('Use Edit Shifts for past-date corrections. Default rota changes can start today or later.');return;}
+  const nextStaff=newStaff||'';
+  const projected=projectedBaseStaffBefore(baseIdx,effective);
+  const sameDate=(BASE_CHANGES||[]).find(c=>!c.applied&&c.baseIdx===baseIdx&&c.effective===effectiveVal);
+  if(projected===nextStaff&&!sameDate){toast(`${nextStaff||'Unassigned'} is already the planned assignment at that date.`);return;}
+  if(sameDate){sameDate.staff=nextStaff;sameDate.updatedAt=new Date().toISOString();}
+  else BASE_CHANGES.push({id:'bc'+Date.now()+'_'+baseIdx,baseIdx,effective:effectiveVal,staff:nextStaff,applied:false,createdAt:new Date().toISOString()});
+  BASE_CHANGES.sort((a,b)=>String(a.effective).localeCompare(String(b.effective))||a.baseIdx-b.baseIdx);
+  const appliedNow=processDueBaseChanges(false);
+  rw();if(aOk){rH();rLeave();rSick();rStaff();}
+  saveAll();
+  toast(appliedNow?`Default rota updated from ${effective.toLocaleDateString('en-GB')}.`:`Future rota change saved for ${effective.toLocaleDateString('en-GB')}.`);
+}
+function cancelBaseChange(id){
+  const c=(BASE_CHANGES||[]).find(x=>x.id===id);if(!c||c.applied)return;
+  BASE_CHANGES=BASE_CHANGES.filter(x=>x.id!==id);
+  rw();if(aOk)rStaff();saveAll();toast('Future rota change cancelled.');
+}
+
+// One-time data fixes requested in Aug 2026. Markers live in HOL so Supabase only applies them once.
+function runDataMigrations(){
+  HOL.__meta=HOL.__meta||{};
+  let changed=false;
+
+  // Kath / Emma swap: Sat 15 Aug 2026 — Emma 09:00-14:00, Kath 14:00-19:00.
+  if(!HOL.__meta.swapKathEmma20260815){
+    const dt=new Date(2026,7,15);
+    const kIdx=BASE.findIndex(b=>b.day===5&&b.s==='09:00'&&b.e==='14:00');
+    const eIdx=BASE.findIndex(b=>b.day===5&&b.s==='14:00'&&b.e==='19:00');
+    if(kIdx>=0&&eIdx>=0){
+      const kId=`${dt.toDateString()}-${kIdx}`;
+      const eId=`${dt.toDateString()}-${eIdx}`;
+      sOv[kId]=Object.assign(sOv[kId]||{},{staff:'Emma',type:'swapped',origStaff:'Kath',swapNote:'Emma took Kath\'s 9am-2pm shift in exchange for Kath taking Emma\'s 2pm-7pm shift.'});
+      sOv[eId]=Object.assign(sOv[eId]||{},{staff:'Kath',type:'swapped',origStaff:'Emma',swapNote:'Kath took Emma\'s 2pm-7pm shift in exchange for Emma taking Kath\'s 9am-2pm shift.'});
+      swpBrd=swpBrd.filter(sw=>!(sw.dateStr==='15 Aug'&&['Kath','Emma'].includes(sw.staff)));
+      // Remove unused wrong-date keys produced by the old Fri-week/Monday-index swap bug.
+      [kIdx,eIdx].forEach(idx=>{
+        const bad=new Date(gM(dt));bad.setDate(bad.getDate()+BASE[idx].day);
+        const badId=`${bad.toDateString()}-${idx}`;
+        if(sOv[badId]&&sOv[badId].type==='swapped')delete sOv[badId];
+      });
+      HOL.__meta.swapKathEmma20260815=true;changed=true;
+    }
+  }
+
+  // If Emma's Tuesday transfer has already been saved in Supabase, repair its historic/payroll impact once.
+  // Assumes the transfer becomes effective Tue 11 Aug 2026, matching this requested update.
+  if(!HOL.__meta.emmaTuesdayTransfer20260811){
+    const candidates=BASE.map((b,i)=>({...b,i})).filter(b=>b.day===1&&b.staff==='Emma'&&((b.s==='12:00'&&b.e==='18:00')||(b.s==='18:00'&&b.e==='23:30')));
+    if(candidates.length===1){
+      const slot=candidates[0],eff=new Date(2026,7,11);
+      preserveAssignmentBeforeDate(slot.i,'Matthew',eff);
+      applyContractProrata('Matthew','Emma',BASE[slot.i],eff);
+      HOL.__meta.emmaTuesdayTransfer20260811={slot:slot.i,effective:'2026-08-11'};changed=true;
+    }
+  }
+
+  // Sun 9 Aug 2026: the modified 19:45-23:00 evening shift was worked by Kath, not James.
+  // Keep this as a dated override so the modified shift times remain intact and the Hours report credits Kath.
+  if(!HOL.__meta.kathReplacesJames20260809){
+    const dt=new Date(2026,7,9),di=6,k=ddk(dt,di);
+    const baseSlots=BASE.filter(b=>b.day===di);
+    const slotPos=dOv[k]?dOv[k].findIndex(s=>(s.s||s.start)==='19:45'&&(s.e||s.end)==='23:00'):-1;
+    const baseSlot=slotPos>=0?baseSlots[slotPos]:null;
+    const bi=baseSlot?BASE.indexOf(baseSlot):-1;
+    if(bi>=0){
+      const id=`${dt.toDateString()}-${bi}`;
+      const ov=Object.assign({},sOv[id]||{});
+      ov.staff='Kath';ov.origStaff=ov.origStaff||'James';ov.adminStaffEdit=true;
+      if(!['covered','swapped','hol','sick','unpaid'].includes(ov.type))ov.type='modified';
+      sOv[id]=ov;
+      HOL.__meta.kathReplacesJames20260809={shift:id,effective:'2026-08-09'};changed=true;
+    }
+  }
+  return changed;
+}
 bH();
 
 function seed(){
@@ -625,17 +799,20 @@ function getDShifts(date){
       const bi=baseSlot?BASE.indexOf(baseSlot):-1;
       // Use same id format as BASE shifts so sOv lookups work
       const id=bi>=0?`${date.toDateString()}-${bi}`:`cx-${k}-${i}`;
-      // Only mark as modified if times actually changed from BASE
+      // Pending effective-dated default changes override the stored dOv worker, but one-off sOv edits still win.
+      const plannedStaff=bi>=0?effectiveBaseStaff(bi,date):(s.staff||'');
       const timesChanged=baseSlot&&(s.s!==baseSlot.s||s.e!==baseSlot.e);
       const type=timesChanged?'modified':(sOv[id]?sOv[id].type:s.type==='modified'?undefined:s.type);
-      const merged=Object.assign({},{...s,start:s.s,end:s.e},{id,day:di,origIdx:bi},sOv[id]||{});
-      if(timesChanged)merged.type='modified';
+      const merged=Object.assign({},{...s,staff:plannedStaff,start:s.s,end:s.e},{id,day:di,origIdx:bi},sOv[id]||{});
+      if(timesChanged&&!merged.type)merged.type='modified';
+      else if(timesChanged&&!['covered','swapped','hol','sick','unpaid'].includes(merged.type))merged.type='modified';
       return merged;
     });
   }
   return BASE.filter(b=>b.day===di).map(b=>{
     const bi=BASE.indexOf(b),id=`${date.toDateString()}-${bi}`;
-    return Object.assign({},{...b,start:b.s,end:b.e},{id,day:di,origIdx:bi},sOv[id]||{});
+    const plannedStaff=effectiveBaseStaff(bi,date);
+    return Object.assign({},{...b,staff:plannedStaff,start:b.s,end:b.e},{id,day:di,origIdx:bi},sOv[id]||{});
   });
 }
 function getShifts(){
@@ -649,6 +826,7 @@ function getShifts(){
 
 const BH=70;
 function rw(){
+  if(processDueBaseChanges(false))saveAll();
   document.getElementById('wklbl').textContent=wkL(ws);
   const wn=wkN(ws);document.getElementById('wknum').textContent=wn?`Payroll Week ${wn} (Fri–Thu)`:'';
   const shifts=getShifts();
@@ -1057,10 +1235,9 @@ function openSh(id,dateMs){
   if(!s.staff||s.type==='cover'){
     // Needs cover
     b+=`<div style="background:var(--rdbg);border:1px solid var(--rdbrd);border-radius:6px;padding:8px;font-size:12px;color:var(--red);margin-bottom:9px;font-weight:600">This shift needs covering</div>`;
-    b+=`<div class="mf"><label>Your name</label><select id="covSel">${STAFF.map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
-    b+=`<div class="mf"><label>PIN</label><div class="prow" id="covPin"></div></div>`;
-    b+=`<button class="mbgn" onclick="doCov('${id}')">Confirm Cover</button>`;
-    setTimeout(()=>bP('covPin',null),80);
+    b+=`<div class="mf"><label>${aOk?'Assign staff (admin)':'Your name'}</label><select id="covSel">${STAFF.map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
+    if(aOk){b+=`<div class="ibx" style="color:var(--green)">Admin override — staff PIN is not required.</div><button class="mbgn" onclick="doCov('${id}')">Assign Staff</button>`;}
+    else{b+=`<div class="mf"><label>PIN</label><div class="prow" id="covPin"></div></div><button class="mbgn" onclick="doCov('${id}')">Confirm Cover</button>`;setTimeout(()=>bP('covPin',null),80);}
 
   } else if(s.type==='covered'){
     // Covered shift — show original vs cover
@@ -1114,10 +1291,9 @@ function openSh(id,dateMs){
       b+=`<div class="mrow" style="padding:5px 0;border-bottom:none"><span class="mlbl">Hours</span><span class="mval">${sh(s).toFixed(1)} hrs</span></div>`;
       b+=`</div>`;
       b+=`<div style="background:var(--rdbg);border:1px solid var(--rdbrd);border-radius:6px;padding:8px;font-size:12px;color:var(--red);margin-bottom:9px;font-weight:600">This shift needs covering</div>`;
-      b+=`<div class="mf"><label>Your name</label><select id="covSel">${STAFF.map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
-      b+=`<div class="mf"><label>PIN</label><div class="prow" id="covPin"></div></div>`;
-      b+=`<button class="mbgn" onclick="doCovHol('${id}','${s.staff}')">Confirm Cover</button>`;
-      setTimeout(()=>bP('covPin',null),80);
+      b+=`<div class="mf"><label>${aOk?'Assign staff (admin)':'Your name'}</label><select id="covSel">${STAFF.map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
+      if(aOk){b+=`<div class="ibx" style="color:var(--green)">Admin override — staff PIN is not required.</div><button class="mbgn" onclick="doCovHol('${id}','${s.staff}')">Assign Staff</button>`;}
+      else{b+=`<div class="mf"><label>PIN</label><div class="prow" id="covPin"></div></div><button class="mbgn" onclick="doCovHol('${id}','${s.staff}')">Confirm Cover</button>`;setTimeout(()=>bP('covPin',null),80);}
     } else if(s.type==='sick'){
       // Sick leave — show details and cover option
       b+=`<div style="background:#fff3e0;border:1px solid #ffb74d;border-radius:6px;padding:9px 11px;font-size:12px;color:#7a4200;margin-bottom:12px;font-weight:600">&#129298; ${s.staff} is on sick leave</div>`;
@@ -1132,10 +1308,9 @@ function openSh(id,dateMs){
       b+=`<div class="mrow" style="padding:5px 0;border-bottom:none"><span class="mlbl">Pay status</span><span class="mval" style="color:${payColour};font-size:11px">${payStatus}</span></div>`;
       b+=`</div>`;
       b+=`<div style="background:var(--rdbg);border:1px solid var(--rdbrd);border-radius:6px;padding:8px;font-size:12px;color:var(--red);margin-bottom:9px;font-weight:600">This shift needs covering</div>`;
-      b+=`<div class="mf"><label>Your name</label><select id="covSel">${STAFF.map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
-      b+=`<div class="mf"><label>PIN</label><div class="prow" id="covPin"></div></div>`;
-      b+=`<button class="mbgn" onclick="doCovHol('${id}','${s.staff}')">Confirm Cover</button>`;
-      setTimeout(()=>bP('covPin',null),80);
+      b+=`<div class="mf"><label>${aOk?'Assign staff (admin)':'Your name'}</label><select id="covSel">${STAFF.map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
+      if(aOk){b+=`<div class="ibx" style="color:var(--green)">Admin override — staff PIN is not required.</div><button class="mbgn" onclick="doCovHol('${id}','${s.staff}')">Assign Staff</button>`;}
+      else{b+=`<div class="mf"><label>PIN</label><div class="prow" id="covPin"></div></div><button class="mbgn" onclick="doCovHol('${id}','${s.staff}')">Confirm Cover</button>`;setTimeout(()=>bP('covPin',null),80);}
     } else if(s.type==='unpaid'){
       b+=`<div style="background:var(--purbg);border:1px solid var(--purbrd);border-radius:6px;padding:9px 11px;font-size:12px;color:var(--pur);margin-bottom:12px;font-weight:600">&#128197; ${s.staff} is on unpaid leave</div>`;
       b+=`<div style="background:var(--surf);border:1px solid var(--border);border-radius:7px;padding:10px 12px;margin-bottom:12px">`;
@@ -1144,10 +1319,9 @@ function openSh(id,dateMs){
       b+=`<div class="mrow" style="padding:5px 0;border-bottom:none"><span class="mlbl">Hours</span><span class="mval">${sh(s).toFixed(1)} hrs</span></div>`;
       b+=`</div>`;
       b+=`<div style="background:var(--rdbg);border:1px solid var(--rdbrd);border-radius:6px;padding:8px;font-size:12px;color:var(--red);margin-bottom:9px;font-weight:600">This shift needs covering</div>`;
-      b+=`<div class="mf"><label>Your name</label><select id="covSel">${STAFF.map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
-      b+=`<div class="mf"><label>PIN</label><div class="prow" id="covPin"></div></div>`;
-      b+=`<button class="mbgn" onclick="doCovHol('${id}','${s.staff}')">Confirm Cover</button>`;
-      setTimeout(()=>bP('covPin',null),80);
+      b+=`<div class="mf"><label>${aOk?'Assign staff (admin)':'Your name'}</label><select id="covSel">${STAFF.map(x=>`<option>${x.name}</option>`).join('')}</select></div>`;
+      if(aOk){b+=`<div class="ibx" style="color:var(--green)">Admin override — staff PIN is not required.</div><button class="mbgn" onclick="doCovHol('${id}','${s.staff}')">Assign Staff</button>`;}
+      else{b+=`<div class="mf"><label>PIN</label><div class="prow" id="covPin"></div></div><button class="mbgn" onclick="doCovHol('${id}','${s.staff}')">Confirm Cover</button>`;setTimeout(()=>bP('covPin',null),80);}
     } else {
       // Standard / modified shift
       b+=`<div class="mrow"><span class="mlbl">Staff</span><span class="mval">${s.staff}</span></div>`;
@@ -1191,6 +1365,11 @@ function openSh(id,dateMs){
         const timeStr=`${fmt(s.s||s.start)}–${fmt(s.e||s.end)}`;
         b+=`<button class="mbp" style="margin-top:9px" onclick="cm('ovSh');quickHolidayReq('${sessionName}','${shiftKey}',${shiftHrs},'${dateStr}','${timeStr}')">&#127958; Request holiday for this shift</button>`;
       }
+      if(aOk){
+        b+=`<div class="slbl" style="margin-top:10px">Admin assignment</div>`;
+        b+=`<div style="display:flex;gap:6px;align-items:center"><select id="adminAssignSel" style="flex:1;background:var(--surf);border:1px solid var(--border);border-radius:6px;padding:7px;font-size:11px;font-family:'Syne',sans-serif;color:var(--text)">${STAFF.map(st=>`<option value="${st.name}"${st.name===s.staff?' selected':''}>${st.name}</option>`).join('')}</select><button class="sbtn sg" onclick="adminAssignStandard('${id}')">Assign</button></div>`;
+        b+=`<div style="font-size:9px;color:var(--muted);margin-top:4px">No staff PIN required. This changes this dated shift only.</div>`;
+      }
       b+=`<button class="mbg" style="margin-top:5px" onclick="openAddSt('${id}')">+ Add / Replace Staff</button>`;
       if(sOv[id]){b+=`<button class="rsbtn" style="margin-top:5px" onclick="confirmResetShift('${id}')">&#8635; Reset to default rota</button>`;}
     }
@@ -1219,14 +1398,29 @@ function openSh(id,dateMs){
   document.getElementById('shBody').innerHTML=b;document.getElementById('ovSh').classList.add('open');
 }
 
+function adminAssignStandard(id){
+  if(!aOk){toast('Admin access required');return;}
+  const sel=document.getElementById('adminAssignSel');const name=sel&&sel.value;if(!name){toast('Select a staff member');return;}
+  const s=getShifts().find(x=>x.id===id);if(!s){toast('Shift not found');return;}
+  if(name===s.staff){toast(`${name} is already assigned to this shift`);return;}
+  const previous=s.staff||'(unassigned)';
+  const ov=Object.assign({},sOv[id]||{});ov.staff=name;ov.origStaff=ov.origStaff||s.staff||null;ov.adminStaffEdit=true;
+  if(!['covered','swapped','hol','sick','unpaid'].includes(ov.type))ov.type='modified';
+  sOv[id]=ov;
+  const shiftDateMs=getShiftDateMs(id);
+  if(shiftDateMs){const dt=new Date(shiftDateMs),di=dt.getDay()===0?6:dt.getDay()-1,k=ddk(dt,di);if(dOv[k]){const bi=parseInt(id.split('-').pop()),baseSlots=BASE.filter(b=>b.day===di),slotPos=baseSlots.findIndex(b=>BASE.indexOf(b)===bi);if(slotPos>=0&&dOv[k][slotPos])dOv[k][slotPos].staff=name;}}
+  cm('ovSh');rw();rH();rShifts();saveAll();toast(`${previous} replaced by ${name} for this shift (admin override).`);
+}
+
 function doCov(id){
-  const name=document.getElementById('covSel').value;const staff=STAFF.find(s=>s.name===name);const pin=gP('covPin');
-  if(staff&&pin.length===4&&pin!==staff.pin){toast('Incorrect PIN');clP('covPin');return;}
-  const origShift=BASE.find(b=>{const bi=BASE.indexOf(b);return id.endsWith(`-${bi}`);});
-  const origStaff=origShift?origShift.staff:null;
+  const name=document.getElementById('covSel').value;const staff=STAFF.find(s=>s.name===name);
+  if(!staff){toast('Select a staff member');return;}
+  if(!aOk){const pin=gP('covPin');if(pin.length!==4||pin!==staff.pin){toast('Incorrect PIN');clP('covPin');return;}}
+  const current=getShifts().find(x=>x.id===id);
+  const origStaff=current&&current.origStaff?current.origStaff:(current&&current.staff?current.staff:'(unassigned)');
   sOv[id]=Object.assign(sOv[id]||{},{staff:name,type:'covered',origStaff:origStaff||'(unassigned)'});
   autoApproveLeaveForShift(id);
-  cm('ovSh');rw();saveAll();toast(`${name} confirmed as cover.`);
+  cm('ovSh');rw();if(aOk){rH();rShifts();}saveAll();toast(aOk?`${name} assigned by admin.`:`${name} confirmed as cover.`);
 }
 
 // Reset a single shift override back to the base rota
@@ -1303,12 +1497,13 @@ function resetShiftToDefault(id){
   toast('Shift reset to default rota.');
 }
 function doCovHol(id,origStaff){
-  const name=document.getElementById('covSel').value;const staff=STAFF.find(s=>s.name===name);const pin=gP('covPin');
-  if(staff&&pin.length===4&&pin!==staff.pin){toast('Incorrect PIN');clP('covPin');return;}
+  const name=document.getElementById('covSel').value;const staff=STAFF.find(s=>s.name===name);
+  if(!staff){toast('Select a staff member');return;}
+  if(!aOk){const pin=gP('covPin');if(pin.length!==4||pin!==staff.pin){toast('Incorrect PIN');clP('covPin');return;}}
   if(name===origStaff){toast('You cannot cover your own shift');return;}
   sOv[id]=Object.assign(sOv[id]||{},{staff:name,type:'covered',origStaff:origStaff});
   autoApproveLeaveForShift(id);
-  cm('ovSh');rw();if(aOk){rRequests();rLeave();}saveAll();toast(`${name} confirmed as cover.`);
+  cm('ovSh');rw();if(aOk){rRequests();rLeave();rH();rShifts();}saveAll();toast(aOk?`${name} assigned by admin.`:`${name} confirmed as cover.`);
 }
 
 function openAddSt(id){
@@ -1349,6 +1544,44 @@ function openAddSt(id){
   b+=`<button class="mbgn" onclick="addEx('${id}',false)">Add from List</button>`;
   b+=`<button class="mbg" style="margin-top:4px" onclick="addEx('${id}',true)">Add by Name</button>`;
   document.getElementById('shBody').innerHTML=b;
+}
+
+// Replace the primary worker for one dated shift. Works for both normal and date-modified shifts.
+function doRpl(id){
+  const fromList=document.getElementById('rplS');
+  const freeText=document.getElementById('rplF');
+  const name=((fromList&&fromList.value)||(freeText&&freeText.value)||'').trim();
+  if(!name){toast('Select or enter the replacement staff member');return;}
+
+  const s=getShifts().find(x=>x.id===id);
+  if(!s){toast('Shift not found — reopen the rota week and try again');return;}
+  if(name===s.staff){toast(`${name} is already assigned to this shift`);return;}
+
+  const previous=s.staff||'(unassigned)';
+  const ov=Object.assign({},sOv[id]||{});
+  ov.staff=name;
+  ov.origStaff=ov.origStaff||s.origStaff||s.staff||null;
+  ov.adminStaffEdit=true;
+  // Preserve leave/cover/swap state when relevant; otherwise mark the dated assignment as modified.
+  if(!['covered','swapped','hol','sick','unpaid'].includes(ov.type))ov.type='modified';
+  sOv[id]=ov;
+
+  // If this date is also time-modified, mirror the worker into dOv for consistency in the edit panel.
+  const shiftDateMs=getShiftDateMs(id);
+  if(shiftDateMs){
+    const dt=new Date(shiftDateMs),di=dt.getDay()===0?6:dt.getDay()-1,k=ddk(dt,di);
+    if(dOv[k]){
+      const bi=parseInt(id.split('-').pop());
+      const baseSlots=BASE.filter(b=>b.day===di);
+      const slotPos=baseSlots.findIndex(b=>BASE.indexOf(b)===bi);
+      if(slotPos>=0&&dOv[k][slotPos])dOv[k][slotPos].staff=name;
+    }
+  }
+
+  cm('ovSh');rw();
+  if(aOk){rH();rShifts();}
+  saveAll();
+  toast(`${previous} replaced by ${name} for this shift.`);
 }
 
 function addEx(id,f){
@@ -1449,7 +1682,12 @@ function openSwapCal(sn,swId){
   // If no session, require login first
   if(!sn&&!sessionName){toast('Please log in first to request a swap');openLogin();return;}
   const staffName=sn||sessionName;
-  calMo=new Date(ws.getFullYear(),ws.getMonth(),1);calCtx={sn:staffName,swId};calSel=null;
+  let anchor=ws;
+  if(swId){
+    const sw=swpBrd.find(x=>x.id===swId);
+    if(sw){const d=parseSortDate(sw.shiftId);if(!isNaN(d.getTime()))anchor=d;}
+  }
+  calMo=new Date(anchor.getFullYear(),anchor.getMonth(),1);calCtx={sn:staffName,swId};calSel=null;
   document.getElementById('scTitle').textContent=swId?`${staffName}: Pick shift to exchange`:`${staffName}: Pick shift to offer`;
   rSC();document.getElementById('ovSC').classList.add('open');
 }
@@ -1465,14 +1703,9 @@ function rSC(){
     const dt=new Date(yr,mo,d),di=dt.getDay()===0?6:dt.getDay()-1;
     const isTod=dt.toDateString()===today.toDateString();
     const isPast=dt<today;
-    // Check BASE for regular shift
-    const baseShift=BASE.some(b=>b.day===di&&b.staff===sn);
-    // Check sOv for covered/assigned shifts on this specific date
-    const ovShift=!isPast&&Object.entries(sOv).some(([k,v])=>{
-      if(v.staff!==sn)return false;
-      try{const parts=k.split('-');const d2=new Date(parts.slice(0,-1).join('-'));return d2.toDateString()===dt.toDateString();}catch(e){return false;}
-    });
-    const hM=(baseShift||ovShift)&&!isPast;
+    // Use the effective dated rota, including one-off admin edits / cover assignments.
+    const mine=getDShifts(dt).filter(s=>s.staff===sn&&!['hol','sick','unpaid','cover'].includes(s.type));
+    const hM=mine.length>0&&!isPast;
     const selM=calSel&&calSel.d===d&&calSel.mo===mo&&calSel.yr===yr;
     b+=`<div class="cmd${hM?' hs':''}${selM?' s2':''}" onclick="${hM?`scK(${d},${mo},${yr})`:''}"><div class="cdn${isTod?' tdn':''}">${d}</div>${hM?`<div class="mdot"></div>`:''}</div>`;
   }
@@ -1488,32 +1721,14 @@ function scNext(){calMo.setMonth(calMo.getMonth()+1);rSC();}
 function scK(d,mo,yr){
   const dt=new Date(yr,mo,d),di=dt.getDay()===0?6:dt.getDay()-1;
   const{sn}=calCtx;
-
-  // First try BASE shift for this person on this day
-  const bi=BASE.findIndex(b=>b.day===di&&b.staff===sn);
-  if(bi>=0){
-    const wkS=gM(dt);const d2=new Date(wkS);d2.setDate(d2.getDate()+BASE[bi].day);
-    calSel={key:`${d2.toDateString()}-${bi}`,d,mo,yr,s:BASE[bi].s,e:BASE[bi].e,day:di,dateStr:`${d} ${MON[mo]}`};
-    rSC();return;
-  }
-
-  // Fall back to sOv — covered/assigned shift on this specific date
-  const ovEntry=Object.entries(sOv).find(([k,v])=>{
-    if(v.staff!==sn)return false;
-    try{const parts=k.split('-');const d2=new Date(parts.slice(0,-1).join('-'));return d2.toDateString()===dt.toDateString();}catch(e){return false;}
-  });
-  if(ovEntry){
-    const[key,ov]=ovEntry;
-    // Get shift times from the BASE entry referenced by the key
-    const biRef=parseInt(key.split('-').pop());
-    const baseRef=BASE[biRef];
-    const s=baseRef?baseRef.s:'12:00',e=baseRef?baseRef.e:'23:30';
-    calSel={key,d,mo,yr,s,e,day:di,dateStr:`${d} ${MON[mo]}`};
-    rSC();return;
-  }
+  const mine=getDShifts(dt).filter(s=>s.staff===sn&&!['hol','sick','unpaid','cover'].includes(s.type));
+  if(!mine.length)return;
+  const shift=mine[0];
+  calSel={key:shift.id,d,mo,yr,s:shift.s||shift.start,e:shift.e||shift.end,day:di,dateStr:`${d} ${MON[mo]}`};
+  rSC();
 }
 function subSwp(){if(!calSel)return;const{sn}=calCtx;if(!swpBrd.find(x=>x.shiftId===calSel.key)){swpBrd.push({id:'s'+Date.now(),shiftId:calSel.key,day:calSel.day,s:calSel.s,e:calSel.e,staff:sn,dateStr:calSel.dateStr,vols:[]});}cm('ovSC');rw();saveAll();toast(`Swap offered for ${calSel.dateStr}. All staff notified.`);calSel=null;}
-function subExch(){if(!calSel)return;const{sn,swId}=calCtx;const sw=swpBrd.find(s=>s.id===swId);if(!sw)return;sw.vols=sw.vols||[];if(!sw.vols.find(v=>v.name===sn)){sw.vols.push({name:sn,key:calSel.key,label:`${calSel.dateStr} ${fmt(calSel.s)}–${fmt(calSel.e)}`});}cm('ovSC');rw();saveAll();toast(`Offer sent to ${sw.staff}. They'll choose who to accept.`);calSel=null;}
+function subExch(){if(!calSel)return;const{sn,swId}=calCtx;const sw=swpBrd.find(s=>s.id===swId);if(!sw)return;if(calSel.key===sw.shiftId){toast('Choose a different shift to exchange');return;}sw.vols=sw.vols||[];if(!sw.vols.find(v=>v.name===sn)){sw.vols.push({name:sn,key:calSel.key,label:`${calSel.dateStr} ${fmt(calSel.s)}–${fmt(calSel.e)}`});}cm('ovSC');rw();saveAll();toast(`Offer sent to ${sw.staff}. They'll choose who to accept.`);calSel=null;}
 
 // LEAVE — shift-picker flow
 let leaveCtx={name:'',type:'annual',selectedShifts:[],calMonth:null};
@@ -1553,14 +1768,14 @@ function renderLeaveReq(){
     const dt=new Date(yr,mo,d);
     const di=dt.getDay()===0?6:dt.getDay()-1;
     const isTod=dt.toDateString()===today.toDateString();
-    const bi=BASE.findIndex(b=>b.day===di&&b.staff===name);
+    const myShift=getDShifts(dt).find(s=>s.staff===name&&!['hol','sick','unpaid','cover'].includes(s.type));
     let shiftKey=null,shiftHrs=0,shiftLabel='';
-    if(bi>=0){
-      shiftKey=`${dt.toDateString()}-${bi}`;
-      shiftHrs=sh(BASE[bi]);
-      shiftLabel=`${fmt(BASE[bi].s)}–${fmt(BASE[bi].e)}`;
+    if(myShift){
+      shiftKey=myShift.id;
+      shiftHrs=sh(myShift);
+      shiftLabel=`${fmt(myShift.s||myShift.start)}–${fmt(myShift.e||myShift.end)}`;
     }
-    const hasMine=bi>=0;
+    const hasMine=!!myShift;
     const isSel=shiftKey&&selectedShifts.some(s=>s.key===shiftKey);
     const isPast=dt<today;
     b+=`<div class="cmd${hasMine&&!isPast?' hs':''}${isSel?' s2':''}" style="${isSel?'background:var(--purbg);border-color:var(--pur)':''}" onclick="${hasMine&&!isPast?`lvToggleShift('${shiftKey}',${shiftHrs},'${d} ${MON[mo]}','${shiftLabel}')`:''}">`
@@ -1889,14 +2104,14 @@ function rShifts(){
   else{
     const dt=eSelDate,di=dt.getDay()===0?6:dt.getDay()-1,k=ddk(dt,di),hM=!!dOv[k];
     const lbl=`${BASE_DAY_NAMES[di]} ${dt.getDate()} ${MON[dt.getMonth()]} ${dt.getFullYear()}`;
-    if(!eDraft[k])eDraft[k]=hM?dOv[k].map(s=>({...s})):BASE.filter(b=>b.day===di).map(s=>({s:s.s,e:s.e,staff:s.staff,type:'n'}));
+    if(!eDraft[k])eDraft[k]=getDShifts(dt).map(s=>({s:s.s||s.start,e:s.e||s.end,staff:s.staff||'',type:s.type||'n',id:s.id,_origStaff:s.staff||''}));
     const draft=eDraft[k];
-    ep+=`<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:3px">${lbl}${hM?`<span class="mod-badge">Modified</span>`:''}</div><div class="scp" style="margin-top:7px">Adjust times only — staff assignments are managed via the shift detail panel.</div>`;
+    ep+=`<div style="font-size:13px;font-weight:700;color:var(--navy);margin-bottom:3px">${lbl}${hM?`<span class="mod-badge">Modified</span>`:''}</div><div class="scp" style="margin-top:7px">Adjust times or who actually worked this date. Past-date changes feed straight into the Hours report for that payroll week.</div>`;
     draft.forEach((s,i)=>{
       const baseSlot=BASE.filter(b=>b.day===di)[i];
       const timeChanged=baseSlot&&(s.s!==baseSlot.s||s.e!==baseSlot.e);
       ep+=`<div class="esl${timeChanged?' md':''}">`;
-      ep+=`<span style="font-size:11px;font-weight:700;color:var(--navy2);min-width:60px">${s.staff||'(unassigned)'}</span>`;
+      ep+=`<select onchange="setDS('${k}',${i},'staff',this.value)" style="max-width:95px"><option value="">Unassigned</option>${STAFF.map(st=>`<option value="${st.name}"${st.name===s.staff?' selected':''}>${st.name}</option>`).join('')}</select>`;
       ep+=`<label style="font-size:8px;color:var(--muted);font-weight:700;text-transform:uppercase">S</label><input type="time" value="${s.s||''}" onchange="setDS('${k}',${i},'s',this.value)" id="si${i}"/>`;
       ep+=`<label style="font-size:8px;color:var(--muted);font-weight:700;text-transform:uppercase">E</label><input type="time" value="${s.e||''}" onchange="setDS('${k}',${i},'e',this.value)" id="ei${i}"/>`;
       ep+=`<span class="hbdg" id="hb${i}">${sh(s).toFixed(1)}h</span>`;
@@ -1928,6 +2143,25 @@ function applyE(k,di){
   const draft=eDraft[k];
   const bd=BASE.filter(b=>b.day===di);
   const dtDate=new Date(k.split('-').slice(0,3).join('-'));
+
+  // Store date-specific staff corrections in sOv so past payroll weeks keep the actual worker.
+  draft.forEach((s,i)=>{
+    const baseSlot=bd[i];if(!baseSlot||isNaN(dtDate.getTime()))return;
+    const bi=BASE.indexOf(baseSlot),shiftId=`${dtDate.toDateString()}-${bi}`;
+    const plannedStaff=effectiveBaseStaff(bi,dtDate);
+    if((s.staff||'')===(s._origStaff||''))return;
+    const ov=Object.assign({},sOv[shiftId]||{});
+    if((s.staff||'')===(plannedStaff||'')){
+      if(ov.adminStaffEdit){delete ov.staff;delete ov.adminStaffEdit;if(ov.type==='modified')delete ov.type;}
+      if(ov.historical){delete ov.staff;delete ov.historical;}
+      if(!Object.keys(ov).length)delete sOv[shiftId];else sOv[shiftId]=ov;
+    } else {
+      ov.staff=s.staff||'';ov.adminStaffEdit=true;delete ov.historical;
+      if(!['covered','swapped','hol','sick','unpaid'].includes(ov.type))ov.type='modified';
+      sOv[shiftId]=ov;
+    }
+  });
+
   let anyDiff=draft.length!==bd.length;
   if(!anyDiff)draft.forEach((s,i)=>{if(!bd[i]||s.s!==bd[i].s||s.e!==bd[i].e)anyDiff=true;});
   if(anyDiff){
@@ -1936,9 +2170,9 @@ function applyE(k,di){
       const bi=baseSlot?BASE.indexOf(baseSlot):-1;
       const shiftId=bi>=0&&!isNaN(dtDate.getTime())?`${dtDate.toDateString()}-${bi}`:null;
       const existingOv=shiftId&&sOv[shiftId];
-      const effectiveStaff=existingOv?existingOv.staff:(baseSlot?baseSlot.staff:s.staff);
+      const effectiveStaff=s.staff||'';
       const timesChanged=baseSlot&&(s.s!==baseSlot.s||s.e!==baseSlot.e);
-      const result={...s,staff:effectiveStaff};
+      const result={...s,staff:effectiveStaff};delete result._origStaff;delete result.id;
       if(timesChanged)result.type='modified';
       else if(existingOv&&existingOv.type)result.type=existingOv.type;
       else delete result.type;
@@ -1947,9 +2181,16 @@ function applyE(k,di){
   } else {
     delete dOv[k];
   }
-  rw();rShifts();if(aOk)rH();saveAll();toast('Times updated.');
+  if(!isNaN(dtDate.getTime()))ws=gM(dtDate);
+  delete eDraft[k];
+  rw();rShifts();if(aOk)rH();saveAll();toast('Schedule updated — Hours report refreshed for this week.');
 }
-function resetE(k){delete dOv[k];delete eDraft[k];rw();rShifts();saveAll();toast('Reset to default rota for this date.');}
+function resetE(k){
+  delete dOv[k];delete eDraft[k];
+  const parts=k.split('-'),dt=new Date(parts.slice(0,3).join('-')),di=parseInt(parts[3]);
+  if(!isNaN(dt.getTime()))BASE.forEach((b,bi)=>{if(b.day!==di)return;const id=`${dt.toDateString()}-${bi}`;const ov=sOv[id];if(ov&&ov.adminStaffEdit){delete ov.staff;delete ov.adminStaffEdit;if(ov.type==='modified')delete ov.type;if(!Object.keys(ov).length)delete sOv[id];}});
+  rw();rShifts();if(aOk)rH();saveAll();toast('Reset date edits to the default rota.');
+}
 
 // SWAPS
 // REQUESTS TAB — all leave requests and swap offers, sorted by upcoming shift date first
@@ -2080,11 +2321,13 @@ function clearResolved(){
 // LEAVE ADMIN (allowances only — requests are in rRequests)
 function rLeave(){
   let b=`<div class="slbl">Annual leave allowances</div>`;
-  b+=`<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Contracted leave allowance is calculated automatically from the default rota (contracted hrs × 4). Use the adjustment field for any additions or deductions. Click <strong>Save Adjustments</strong> to apply them permanently and reset to zero.</div>`;
+  b+=`<div style="font-size:11px;color:var(--muted);margin-bottom:12px">Contracted leave allowance starts from contracted hrs × 4. Permanent mid-year rota changes are automatically pro-rated across the Apr–Mar leave year. Use the adjustment field for any other additions or deductions.</div>`;
 
   STAFF.forEach(({name})=>{
     const h=HOL[name]||{adj:0,taken:0};
-    const contracted=+(cwhRaw(name)*4).toFixed(1);
+    const fullYearContract=+(cwhRaw(name)*4).toFixed(1);
+    const contractProrata=+(h.contractProrata||0).toFixed(1);
+    const contracted=+(fullYearContract+contractProrata).toFixed(1);
     const adjBaked=+(h.adjBaked||0).toFixed(1);
     const adj=+(h.adj||0).toFixed(1);
     const total=+(contracted+adjBaked+adj).toFixed(1);
@@ -2097,7 +2340,7 @@ function rLeave(){
 
     b+=`<div style="display:flex;flex-direction:column;gap:3px">
       <label style="font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase">Contracted leave allowance</label>
-      <span style="font-size:14px;font-weight:800;color:var(--navy2)">${contracted}h${adjBaked!==0?`<span style="font-size:10px;color:var(--amb);font-weight:700;margin-left:5px">${adjBaked>0?'+':''}${adjBaked}h saved</span>`:''}
+      <span style="font-size:14px;font-weight:800;color:var(--navy2)">${contracted}h${contractProrata!==0?`<span style="font-size:9px;color:var(--amb);font-weight:700;margin-left:5px">pro-rata ${contractProrata>0?'+':''}${contractProrata}h</span>`:''}${adjBaked!==0?`<span style="font-size:10px;color:var(--amb);font-weight:700;margin-left:5px">${adjBaked>0?'+':''}${adjBaked}h saved</span>`:''}
       </span>
     </div>`;
 
@@ -2144,7 +2387,7 @@ function rLeave(){
 function uH(n,v){
   if(!HOL[n])return;
   HOL[n].adj=+(v||0).toFixed(1);
-  const contracted=+(cwhRaw(n)*4).toFixed(1);
+  const contracted=contractLeaveBase(n);
   const total=+(contracted+(HOL[n].adjBaked||0)+HOL[n].adj).toFixed(1);
   const rv=+(total-(HOL[n].taken||0)).toFixed(1);
   const tEl=document.getElementById(`leaveTotal_${n}`);
@@ -2156,7 +2399,7 @@ function uH(n,v){
 
 function saveAdj(n){
   if(!HOL[n])return;
-  const contracted=+(cwhRaw(n)*4).toFixed(1);
+  const contracted=contractLeaveBase(n);
   const adj=+(HOL[n].adj||0).toFixed(1);
   if(adj===0){toast('No adjustment to save');return;}
   HOL[n].adjBaked=+((HOL[n].adjBaked||0)+adj).toFixed(1);
@@ -2168,7 +2411,7 @@ function saveAdj(n){
 function uHTaken(n,v){
   if(!HOL[n])return;
   HOL[n].taken=Math.max(0,+(v||0).toFixed(1));
-  const contracted=+(cwhRaw(n)*4).toFixed(1);
+  const contracted=contractLeaveBase(n);
   const total=+(contracted+(HOL[n].adjBaked||0)+(HOL[n].adj||0)).toFixed(1);
   const rv=+(total-HOL[n].taken).toFixed(1);
   const rEl=document.getElementById(`leaveRem_${n}`);
@@ -2231,7 +2474,7 @@ function adminCancelLeave(name,type,reqId){
 // sickHrsTotal is cumulative hours across all sick records
 
 function initSick(name){
-  if(!HOL[name])HOL[name]={adj:0,taken:0,req:[],upd:[]};
+  if(!HOL[name])HOL[name]={adj:0,taken:0,req:[],upd:[],contractProrata:0};
   if(!HOL[name].sick)HOL[name].sick=[];
   if(HOL[name].sickHrsTotal===undefined)HOL[name].sickHrsTotal=0;
 }
@@ -2300,12 +2543,9 @@ function getSickShiftsInRange(name, fromVal, untilVal){
   const shifts=[];
   const cur=new Date(from);
   while(cur<=until){
-    const di=cur.getDay()===0?6:cur.getDay()-1;
-    const dayShifts=BASE.filter(b=>b.day===di&&b.staff===name);
+    const dayShifts=getDShifts(cur).filter(s=>s.staff===name&&!['hol','sick','unpaid','cover'].includes(s.type));
     dayShifts.forEach(b=>{
-      const bi=BASE.indexOf(b);
-      const id=`${cur.toDateString()}-${bi}`;
-      shifts.push({date:new Date(cur),dateStr:cur.toLocaleDateString('en-GB'),shiftId:id,hrs:sh(b),label:`${cur.toLocaleDateString('en-GB')} ${fmt(b.s)}–${fmt(b.e)}`});
+      shifts.push({date:new Date(cur),dateStr:cur.toLocaleDateString('en-GB'),shiftId:b.id,hrs:sh(b),label:`${cur.toLocaleDateString('en-GB')} ${fmt(b.s||b.start)}–${fmt(b.e||b.end)}`});
     });
     cur.setDate(cur.getDate()+1);
   }
@@ -2376,6 +2616,7 @@ function removeSick(name,idx){
 
 // STAFF ADMIN
 function rStaff(){
+  processDueBaseChanges(false);
   let b=`<div class="slbl">Current Staff</div>`;
   STAFF.forEach((s,i)=>{b+=`<div class="staff-row"><div><div style="font-weight:700;font-size:12px">${s.name}</div><div style="font-size:10px;color:var(--muted)">${cwhRaw(s.name).toFixed(1)} contracted hrs/wk · ${tot(s.name).toFixed(1)} hrs leave allowance</div></div><div style="display:flex;gap:5px"><button class="sbtn sn" onclick="openPC('${s.name}')">PIN</button><button class="sbtn sr" onclick="rmSt(${i})">Remove</button></div></div>`;});
   b+=`<div class="slbl" style="margin-top:14px">Add New Staff Member</div>`;
@@ -2383,21 +2624,29 @@ function rStaff(){
   b+=`<div class="mf"><label>PIN (4 digits)</label><div class="prow" id="nsp"></div></div>`;
   b+=`<button class="mbgn" onclick="addSt()">Add Staff Member</button>`;
 
-  // Permanent rota reassignment
-  b+=`<div class="slbl" style="margin-top:18px">Reassign default rota shifts <span style="font-size:9px;font-weight:400;text-transform:none;letter-spacing:0">(use when a staff member permanently leaves — permanently changes who is scheduled for a shift slot)</span></div>`;
-  b+=`<div style="background:var(--rdbg);border:1px solid var(--rdbrd);border-radius:7px;padding:9px 11px;font-size:11px;color:var(--red);margin-bottom:10px;font-weight:600">&#9888; These changes alter the permanent rota for all future weeks.</div>`;
-  // Show all base shifts grouped by day
+  const todayVal=localDateValue(new Date());
+  b+=`<div class="slbl" style="margin-top:18px">Schedule default rota changes <span style="font-size:9px;font-weight:400;text-transform:none;letter-spacing:0">(multiple effective dates supported)</span></div>`;
+  b+=`<div style="background:var(--gbg);border:1px solid var(--gbrd);border-radius:7px;padding:9px 11px;font-size:11px;color:var(--amb);margin-bottom:10px;font-weight:600">Choose who should take a standard shift and the date it starts. You can add several future changes to the same shift. Future rota weeks show the planned assignment immediately; contracted hours and leave entitlement change only when each effective date arrives.</div>`;
   const byDay={};BASE.forEach((s,i)=>{if(!byDay[s.day])byDay[s.day]=[];byDay[s.day].push({...s,bi:i});});
   Object.keys(byDay).sort((a,b)=>a-b).forEach(day=>{
     b+=`<div style="font-size:10px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px">${BASE_DAY_NAMES[day]}</div>`;
     byDay[day].forEach(slot=>{
-      b+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--surf2);font-size:12px;flex-wrap:wrap">`;
+      const upcoming=(BASE_CHANGES||[]).filter(c=>!c.applied&&c.baseIdx===slot.bi).slice().sort((a,b)=>String(a.effective).localeCompare(String(b.effective)));
+      b+=`<div style="padding:7px 0;border-bottom:1px solid var(--surf2);font-size:12px">`;
+      b+=`<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">`;
       b+=`<span style="min-width:90px;color:var(--muted);font-size:11px">${fmt(slot.s)}–${fmt(slot.e)}</span>`;
-      b+=`<select onchange="reassignBase(${slot.bi},this.value)" style="background:var(--surf);border:1px solid var(--border);border-radius:5px;padding:4px 7px;font-size:11px;font-family:'Syne',sans-serif;color:var(--text)">`;
-      STAFF.forEach(st=>{b+=`<option${st.name===slot.staff?' selected':''}>${st.name}</option>`;});
-      b+=`<option value="" ${!slot.staff?' selected':''}>— Unassigned —</option>`;
-      b+=`</select>`;
-      b+=`<span style="font-size:10px;color:var(--muted)">${sh(slot).toFixed(1)} hrs</span>`;
+      b+=`<span style="font-size:10px;font-weight:700;color:var(--navy2);min-width:85px">Current: ${slot.staff||'Unassigned'}</span>`;
+      b+=`<select id="rbStaff_${slot.bi}" style="background:var(--surf);border:1px solid var(--border);border-radius:5px;padding:4px 7px;font-size:11px;font-family:'Syne',sans-serif;color:var(--text)">`;
+      STAFF.forEach(st=>{b+=`<option>${st.name}</option>`;});
+      b+=`<option value="">— Unassigned —</option></select>`;
+      b+=`<input type="date" id="rbDate_${slot.bi}" value="${todayVal}" min="${todayVal}" style="background:var(--surf);border:1px solid var(--border);border-radius:5px;padding:4px 6px;font-size:10px;font-family:'Syne',sans-serif;color:var(--text)"/>`;
+      b+=`<button class="sbtn sg" onclick="scheduleBaseChange(${slot.bi},document.getElementById('rbStaff_${slot.bi}').value,document.getElementById('rbDate_${slot.bi}').value)">Add change</button>`;
+      b+=`<span style="font-size:10px;color:var(--muted)">${sh(slot).toFixed(1)} hrs</span></div>`;
+      if(upcoming.length){
+        b+=`<div style="margin:6px 0 0 98px;display:flex;flex-direction:column;gap:4px">`;
+        upcoming.forEach(c=>{const ed=parseLocalDateValue(c.effective);b+=`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--gbg);border:1px solid var(--gbrd);border-radius:5px;padding:5px 7px;font-size:10px"><span><strong>${ed?ed.toLocaleDateString('en-GB'):c.effective}</strong> → ${c.staff||'Unassigned'}</span><button class="sbtn sr" onclick="cancelBaseChange('${c.id}')">Cancel</button></div>`;});
+        b+=`</div>`;
+      }
       b+=`</div>`;
     });
   });
@@ -2406,16 +2655,10 @@ function rStaff(){
   setTimeout(()=>bP('nsp',null),80);
 }
 
-function reassignBase(baseIdx,newStaff){
-  if(baseIdx<0||baseIdx>=BASE.length)return;
-  BASE[baseIdx].staff=newStaff||'';
-  bH(); // recalculate HOL entries (cwh changes affect sick pay thresholds and leave allowances)
-  rw();if(aOk){rH();rLeave();rSick();rStaff();}
-  saveAll();
-  toast(`Rota updated: ${fmt(BASE[baseIdx].s)}–${fmt(BASE[baseIdx].e)} on ${BASE_DAY_NAMES[BASE[baseIdx].day]} now assigned to ${newStaff||'(unassigned)'}.`);
-}
+// Backwards-compatible alias: existing calls now create an effective-dated change.
+function reassignBase(baseIdx,newStaff,effectiveVal){scheduleBaseChange(baseIdx,newStaff,effectiveVal);}
 function rmSt(i){const n=STAFF[i].name;STAFF.splice(i,1);saveAll();toast(`${n} removed.`);rStaff();rw();}
-function addSt(){const name=document.getElementById('nsn').value.trim();const pin=gP('nsp');if(!name||pin.length!==4){toast('Enter name and 4-digit PIN');return;}if(STAFF.find(s=>s.name===name)){toast('Already exists');return;}STAFF.push({name,pin});HOL[name]={adj:0,taken:0,req:[],upd:[]};saveAll();toast(`${name} added.`);rStaff();rw();}
+function addSt(){const name=document.getElementById('nsn').value.trim();const pin=gP('nsp');if(!name||pin.length!==4){toast('Enter name and 4-digit PIN');return;}if(STAFF.find(s=>s.name===name)){toast('Already exists');return;}STAFF.push({name,pin});HOL[name]={adj:0,taken:0,req:[],upd:[],contractProrata:0};saveAll();toast(`${name} added.`);rStaff();rw();}
 
 let curTab='rota';
 function setTab(t,btn){
