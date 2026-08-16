@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota App v15.20 -->
+<!-- TSC Staff Rota App v15.21 -->
 <!-- Last updated: August 2026 -->
 <html lang="en">
 <head>
@@ -12,7 +12,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 :root{
-  --navy:#0a1e3d;--navy2:#0f2a52;--gold:#d4a03a;--gold2:#f0c060;--gbg:#fdf6e8;--gbrd:#e8c87a;
+  --navy:#0a1e3d;--navy2:#0f2a52;--gold:#d4a03a;--gold2:#f0c060;--gbg:#fdf6e8;--gbrd:#e8c87a;--gold-bg:var(--gbg);--gold-border:var(--gbrd);
   --surf:#f4f7fc;--surf2:#eaf0f8;--border:#ccd6e8;--text:#0a1e3d;--text2:#3a5278;--muted:#6b82a8;
   --green:#0d5e32;--gnbg:#e8f7ee;--gnbrd:#5ec887;
   --red:#8b1818;--rdbg:#fdf0f0;--rdbrd:#e0a0a0;
@@ -1358,9 +1358,9 @@ function openSh(id,dateMs){
       // If logged-in staff member is viewing their own shift, offer quick holiday request
       if(sessionName&&s.staff===sessionName){
         const shiftDateMs=getShiftDateMs(s.id);
+        const dt2=new Date(shiftDateMs);
         const shiftKey=s.id;
         const shiftHrs=sh(s);
-        const di2=dt2.getDay()===0?6:dt2.getDay()-1;
         const dateStr=`${dt2.getDate()} ${MON[dt2.getMonth()]}`;
         const timeStr=`${fmt(s.s||s.start)}–${fmt(s.e||s.end)}`;
         b+=`<button class="mbp" style="margin-top:9px" onclick="cm('ovSh');quickHolidayReq('${sessionName}','${shiftKey}',${shiftHrs},'${dateStr}','${timeStr}')">&#127958; Request holiday for this shift</button>`;
