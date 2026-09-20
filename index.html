@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota App v15.21 -->
+<!-- TSC Staff Rota App v15.22 -->
 <!-- Last updated: August 2026 -->
 <html lang="en">
 <head>
@@ -980,7 +980,7 @@ function confClaimAndJump(id,dateMs){
   // Find the original staff from BASE for this shift id
   const origShift=BASE.find((b,bi)=>id.endsWith(`-${bi}`));
   const origStaff=origShift?origShift.staff:null;
-  sOv[id]=Object.assign(sOv[id]||{},{staff:name,type:'covered',origStaff:origStaff||'(unassigned)'});
+  setCoveredShift(id,name,origStaff||'(unassigned)');
   autoApproveLeaveForShift(id);
   // Jump rota to that week
   if(dateMs)ws=gM(new Date(dateMs));
@@ -1016,9 +1016,82 @@ function confClaim(id){
   if(staff&&pin.length===4&&pin!==staff.pin){toast('Incorrect PIN');clP('clmPin');return;}
   const origShift=BASE.find(b=>{const bi=BASE.indexOf(b);return id.endsWith(`-${bi}`);});
   const origStaff=origShift?origShift.staff:null;
-  sOv[id]=Object.assign(sOv[id]||{},{staff:name,type:'covered',origStaff:origStaff||'(unassigned)'});
+  setCoveredShift(id,name,origStaff||'(unassigned)');
   autoApproveLeaveForShift(id);
   cm('ovC');rw();saveAll();toast(`${name} confirmed as cover. Manager notified.`);
+}
+
+// Store a cover assignment while remembering what made the shift available.
+// This lets a covering staff member release it later without cancelling the original absence.
+function setCoveredShift(id,name,origStaff){
+  const existing=sOv[id]||{};
+  const previousType=existing.type;
+  const coverFromType=existing.coverFromType||(['hol','sick','unpaid','cover'].includes(previousType)?previousType:null);
+  sOv[id]=Object.assign(existing,{staff:name,type:'covered',origStaff:origStaff||'(unassigned)'});
+  if(coverFromType)sOv[id].coverFromType=coverFromType;
+}
+
+// Find an active underlying absence for a covered shift. Existing rota data created
+// before v15.22 may not have coverFromType, so the leave records are the source of truth.
+function underlyingAbsenceForShift(shiftId,origStaff){
+  if(!origStaff||origStaff==='(unassigned)')return null;
+  const h=HOL[origStaff];if(!h)return null;
+  const active=r=>r&&r.status!=='cancelled'&&r.status!=='declined';
+  const annual=(h.req||[]).find(r=>active(r)&&r.shiftKeys&&r.shiftKeys.includes(shiftId));
+  if(annual)return{type:'hol',reqId:annual.id,label:'annual leave'};
+  const unpaid=(h.upd||[]).find(r=>active(r)&&r.shiftKeys&&r.shiftKeys.includes(shiftId));
+  if(unpaid)return{type:'unpaid',reqId:unpaid.id,label:'unpaid leave'};
+  const sick=(h.sick||[]).find(r=>{
+    const ids=r.shiftIds||(r.shiftId?[r.shiftId]:[]);
+    return active(r)&&ids.includes(shiftId);
+  });
+  if(sick)return{type:'sick',reqId:sick.id,label:'sick leave'};
+  return null;
+}
+
+function confirmReleaseCoveredShift(id){
+  const s=getShifts().find(x=>x.id===id);if(!s||s.type!=='covered'){toast('This shift is no longer marked as covered');return;}
+  if(!aOk&&sessionName!==s.staff){toast('Only the covering staff member or admin can release this shift');return;}
+  const orig=s.origStaff||'(unassigned)';
+  const absence=underlyingAbsenceForShift(id,orig);
+  document.getElementById('cTitle').textContent='Offer Shift for Cover Again';
+  let b=`<div class="ibx"><strong>${s.staff}</strong> is currently covering this shift.<br>${fmt(s.s||s.start)} – ${fmt(s.e||s.end)}</div>`;
+  if(absence){
+    b+=`<div style="background:var(--purbg);border:1px solid var(--purbrd);border-radius:7px;padding:9px 10px;font-size:11px;color:var(--pur);margin-bottom:9px"><strong>${orig}'s ${absence.label} will stay in place.</strong><br>The leave record, hours taken and approval status will not be changed.</div>`;
+  } else {
+    b+=`<div class="ibx">The covering assignment will be removed and the shift will return to <strong>Cover needed</strong>.</div>`;
+  }
+  b+=`<button class="mbr" onclick="releaseCoveredShift('${id}')">Confirm — offer for cover again</button>`;
+  document.getElementById('cBody').innerHTML=b;
+  document.getElementById('ovC').classList.add('open');
+}
+
+function releaseCoveredShift(id){
+  const s=getShifts().find(x=>x.id===id);if(!s||s.type!=='covered'){cm('ovC');toast('This shift is no longer marked as covered');return;}
+  if(!aOk&&sessionName!==s.staff){toast('Only the covering staff member or admin can release this shift');return;}
+  const ov=Object.assign({},sOv[id]||{});
+  const orig=ov.origStaff||s.origStaff||'(unassigned)';
+  const absence=underlyingAbsenceForShift(id,orig);
+
+  if(absence){
+    // Restore the underlying absence only. HOL records are deliberately untouched.
+    ov.staff=orig;
+    ov.type=absence.type;
+    ov.origStaff=orig;
+    if(absence.reqId)ov.reqId=absence.reqId;
+  } else {
+    // Generic/unassigned cover shift: simply make it available again.
+    ov.staff='';
+    ov.type='cover';
+    if(!ov.origStaff)ov.origStaff=orig;
+    delete ov.reqId;
+  }
+  delete ov.coverFromType;
+  sOv[id]=ov;
+  cm('ovC');cm('ovSh');rw();
+  if(aOk){rH();rRequests();rLeave();rSick();rShifts();}
+  saveAll();
+  toast(absence?`Cover released — ${orig}'s ${absence.label} remains in place.`:'Cover released — shift is available again.');
 }
 
 // If a hol/unpaid shift gets covered, auto-approve the matching pending leave request
@@ -1255,7 +1328,11 @@ function openSh(id,dateMs){
     b+=`<div class="mrow" style="padding:5px 0;border-bottom:none"><span class="mlbl">Time</span><span class="mval">${fmt(s.s||s.start)} – ${fmt(s.e||s.end)}</span></div>`;
     b+=`</div>`;
     if(s.extraStaff&&s.extraStaff.length)b+=`<div class="mrow" style="margin-top:6px"><span class="mlbl">Extra staff</span><span class="mval">${s.extraStaff.map(x=>typeof x==='string'?x:`${x.name} (${fmt(x.s)}–${fmt(x.e)})`).join(', ')}</span></div>`;
-    b+=`<button class="mbg" style="margin-top:10px" onclick="openAddSt('${id}')">+ Add / Replace Staff</button>`;
+    if((sessionName&&sessionName===s.staff)||aOk){
+      const relLabel=aOk?'Re-open shift for cover':'I can no longer cover this shift';
+      b+=`<button class="mbr" style="margin-top:10px" onclick="confirmReleaseCoveredShift('${id}')">&#8634; ${relLabel}</button>`;
+    }
+    b+=`<button class="mbg" style="margin-top:5px" onclick="openAddSt('${id}')">+ Add / Replace Staff</button>`;
     b+=`<button class="rsbtn" style="margin-top:5px" onclick="confirmResetShift('${id}')">&#8635; Reset to default rota</button>`;
 
   } else if(s.type==='swapped'){
@@ -1418,7 +1495,7 @@ function doCov(id){
   if(!aOk){const pin=gP('covPin');if(pin.length!==4||pin!==staff.pin){toast('Incorrect PIN');clP('covPin');return;}}
   const current=getShifts().find(x=>x.id===id);
   const origStaff=current&&current.origStaff?current.origStaff:(current&&current.staff?current.staff:'(unassigned)');
-  sOv[id]=Object.assign(sOv[id]||{},{staff:name,type:'covered',origStaff:origStaff||'(unassigned)'});
+  setCoveredShift(id,name,origStaff||'(unassigned)');
   autoApproveLeaveForShift(id);
   cm('ovSh');rw();if(aOk){rH();rShifts();}saveAll();toast(aOk?`${name} assigned by admin.`:`${name} confirmed as cover.`);
 }
@@ -1501,7 +1578,7 @@ function doCovHol(id,origStaff){
   if(!staff){toast('Select a staff member');return;}
   if(!aOk){const pin=gP('covPin');if(pin.length!==4||pin!==staff.pin){toast('Incorrect PIN');clP('covPin');return;}}
   if(name===origStaff){toast('You cannot cover your own shift');return;}
-  sOv[id]=Object.assign(sOv[id]||{},{staff:name,type:'covered',origStaff:origStaff});
+  setCoveredShift(id,name,origStaff);
   autoApproveLeaveForShift(id);
   cm('ovSh');rw();if(aOk){rRequests();rLeave();rH();rShifts();}saveAll();toast(aOk?`${name} assigned by admin.`:`${name} confirmed as cover.`);
 }
