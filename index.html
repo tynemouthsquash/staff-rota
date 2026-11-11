@@ -408,11 +408,13 @@ async function loadFromDB() {
     const migrated=runDataMigrations();
     const dueChanges=processDueBaseChanges(false);
     if(isFresh||migrated||dueChanges)saveAll();
-  } catch(e) {
-    console.warn('DB load failed, running offline. Error:', JSON.stringify(e), e.message||e);
-    showToastError('Database unavailable — running offline.');
-    bH(); seed(); runDataMigrations();processDueBaseChanges(false);
-  }
+} catch(e) {
+  console.error('Database connection failed:', e);
+  showLoader(
+    'Rota temporarily unavailable — maintenance in progress'
+  );
+  return;
+}
   hideLoader();
   ws = gM(today);
   rw();
