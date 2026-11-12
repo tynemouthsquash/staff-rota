@@ -253,7 +253,7 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
   </div>
   <div class="preview-notice">Security upgrade in progress. Shift viewing is available. Private reporting is available to verified administrators while administrator login is enabled; staff leave requests, swaps, claiming shifts and most editing remain disabled. Administrator shift edits and pending leave decisions require a verified administrator and an additional server switch. Do not use this preview as a substitute for the full staff rota until the schedule has been checked.</div>
   <div class="tabs-row">
-    <div class="tabs"><span class="readonly-pill">Weekly Rota</span><button class="tab auth-hidden" id="adminReportTabBtn" type="button">Admin Report</button></div>
+    <div class="tabs" role="tablist" aria-label="Rota sections"><button class="tab active" id="weeklyRotaTabBtn" type="button" role="tab" aria-selected="true" aria-controls="rv">Weekly Rota</button><button class="tab auth-hidden" id="adminReportTabBtn" type="button" role="tab" aria-selected="false" aria-controls="adminReportPanel">Admin Report</button></div>
     <div class="week-nav">
       <button class="nb tod" id="todayBtn" type="button">Today</button>
       <button class="nb" id="prevBtn" type="button" aria-label="Previous week">&#8592;</button>
@@ -524,6 +524,10 @@ function reportShow(visible){
   authElement('adminReportPanel').classList.toggle('auth-hidden',!adminReportVisible);
   authElement('rv').classList.toggle('auth-hidden',adminReportVisible);
   authElement('adminSessionPanel').classList.toggle('auth-hidden',!adminSessionToken || adminReportVisible);
+  authElement('weeklyRotaTabBtn').classList.toggle('active',!adminReportVisible);
+  authElement('weeklyRotaTabBtn').setAttribute('aria-selected',String(!adminReportVisible));
+  authElement('adminReportTabBtn').classList.toggle('active',adminReportVisible);
+  authElement('adminReportTabBtn').setAttribute('aria-selected',String(adminReportVisible));
   if(adminReportVisible) renderAdminReport();
 }
 function reportN(value){const n=Number(value);return Number.isFinite(n)?n:0;}
@@ -724,6 +728,7 @@ authElement('adminReportContent').addEventListener('click',event=>{
   submitAdminEdit('resolve_leave',payload);
 });
 
+authElement('weeklyRotaTabBtn').addEventListener('click',()=>{reportShow(false);drawWeek();});
 authElement('adminReportTabBtn').addEventListener('click',()=>{reportShow(true);loadAdminReport();});
 authElement('adminReportRefreshBtn').addEventListener('click',loadAdminReport);
 authElement('adminReportBackBtn').addEventListener('click',()=>{reportShow(false);drawWeek();});
