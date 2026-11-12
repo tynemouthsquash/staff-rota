@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota - secure read-only preview v15.23 -->
+<!-- TSC Staff Rota - secure read-only preview v15.24 with administrator authentication UI -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -190,15 +190,36 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
   .error-panel{max-width:520px;margin:60px auto;background:white;border:1px solid #e0a0a0;border-radius:12px;padding:24px;text-align:center}
   .readonly-pill{padding:3px 8px;border-radius:5px;background:#eaf0f8;font-size:10px;color:#3a5278;font-weight:700}
   .sb{cursor:pointer}
+
+/* Step 67: Administrator authentication preview (no editing permissions) */
+.admin-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.auth-modal{max-width:430px}
+.auth-subheading{font-size:12px;line-height:1.6;color:var(--text2);margin-bottom:13px}
+.auth-field{margin:0 0 12px}
+.auth-field label{display:block;font-size:11px;font-weight:700;color:var(--text2);margin-bottom:5px}
+.auth-field input{display:block;width:100%;background:#fff;border:1px solid var(--border);border-radius:6px;padding:11px 10px;font-size:14px;font-family:inherit;color:var(--navy)}
+.auth-field input:focus{outline:2px solid var(--gold);outline-offset:1px}
+.auth-help{font-size:10px;line-height:1.5;color:var(--muted);margin-top:4px}
+.auth-message{font-size:11px;line-height:1.5;padding:9px 10px;margin:9px 0;border-radius:7px;background:var(--surf2);color:var(--text2)}
+.auth-message.error{background:var(--rdbg);border:1px solid var(--rdbrd);color:var(--red)}
+.auth-message.success{background:var(--gnbg);border:1px solid var(--gnbrd);color:var(--green)}
+.auth-link{background:none;border:none;color:var(--navy);font-family:inherit;font-size:11px;text-decoration:underline;cursor:pointer;margin:8px 0 0;padding:5px}
+.auth-btn{background:var(--navy);color:white;border:none;border-radius:6px;padding:11px 14px;font:700 12px 'Syne',sans-serif;cursor:pointer;width:100%}
+.auth-btn:disabled{opacity:.55;cursor:wait}
+.auth-success{background:#fff;border:1px solid var(--border);border-left:4px solid var(--gold);border-radius:9px;padding:16px;margin:14px 18px}
+.auth-success h2{font-size:16px;margin-bottom:6px}
+.auth-success p{font-size:12px;line-height:1.6;color:var(--text2)}
+.auth-success button{margin-top:10px}
+.auth-hidden{display:none!important}
 </style>
 </head>
 <body>
 <div class="app" id="app">
   <div class="topbar">
     <div><div class="logo-main">Tynemouth Squash</div><div class="logo-sub">Staff Rota</div></div>
-    <div class="topbar-right"><span class="preview-flag">READ-ONLY PREVIEW</span></div>
+    <div class="topbar-right admin-actions"><span class="preview-flag">READ-ONLY PREVIEW</span><button type="button" class="login-btn" id="adminOpenBtn">Administrator</button><button type="button" class="login-btn auth-hidden" id="adminLogoutBtn">Sign out</button></div>
   </div>
-  <div class="preview-notice">Security upgrade in progress. Shift viewing is available in this preview, but login, leave, swaps, claiming shifts and all editing are disabled. Do not use this preview as a substitute for the full staff rota until the schedule has been checked.</div>
+  <div class="preview-notice">Security upgrade in progress. Shift viewing is available. Administrator sign-in and setup screens are present for testing, but their server endpoints remain disabled; leave, swaps, claiming shifts and all editing are disabled. Do not use this preview as a substitute for the full staff rota until the schedule has been checked.</div>
   <div class="tabs-row">
     <div class="tabs"><span class="readonly-pill">Weekly Rota</span></div>
     <div class="week-nav">
@@ -208,6 +229,11 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
       <button class="nb" id="nextBtn" type="button" aria-label="Next week">&#8594;</button>
     </div>
   </div>
+  <section id="adminSessionPanel" class="auth-success auth-hidden" aria-live="polite">
+    <h2>Administrator signed in</h2>
+    <p>Your administrator identity has been verified by the server. This is an authentication preview only: shift changes, holiday approvals and staff management are not yet enabled.</p>
+    <button class="auth-btn" id="adminPanelLogoutBtn" type="button" style="max-width:180px">Sign out</button>
+  </section>
   <div id="rv">
     <div class="grid-wrap"><div class="dcols" id="dg" aria-live="polite"></div></div>
     <div class="legend">
@@ -216,6 +242,26 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
       <div class="leg"><div class="ld" style="background:var(--gnbg);border:1px dashed var(--gnbrd)"></div>Covered</div>
       <div class="leg"><div class="ld" style="background:var(--ambbg);border:1px dashed var(--ambbrd)"></div>Swapped</div>
       <div class="leg"><div class="ld" style="background:#e8f0fa;border:2px solid var(--gold)"></div>Modified</div>
+    </div>
+  </div>
+  <div class="ov" id="adminAuthOverlay" role="dialog" aria-modal="true" aria-labelledby="adminAuthTitle">
+    <div class="modal auth-modal">
+      <div class="mh"><h2 id="adminAuthTitle">Administrator login</h2><button type="button" class="mcl" id="closeAdminAuthBtn" aria-label="Close">&#215;</button></div>
+      <div class="mb" style="max-height:none">
+        <p class="auth-subheading" id="adminAuthDescription">Sign in using the separate administrator password. Staff PINs do not work here.</p>
+        <form id="adminLoginForm" autocomplete="on">
+          <div class="auth-field"><label for="adminLoginPassword">Administrator password</label><input id="adminLoginPassword" type="password" autocomplete="current-password" minlength="16" maxlength="64" required></div>
+          <button type="submit" class="auth-btn">Sign in</button>
+        </form>
+        <form id="adminSetupForm" class="auth-hidden" autocomplete="off">
+          <div class="auth-field"><label for="adminActivationCode">One-time activation code</label><input id="adminActivationCode" type="text" autocapitalize="off" autocomplete="off" spellcheck="false" inputmode="text" minlength="64" maxlength="64" pattern="[a-f0-9]{64}" required><div class="auth-help">A private 64-character code issued from the Supabase SQL Editor. Never place it in GitHub or this chat.</div></div>
+          <div class="auth-field"><label for="adminSetupPassword">Choose a strong password</label><input id="adminSetupPassword" type="password" autocomplete="new-password" minlength="16" maxlength="64" required><div class="auth-help">16–64 printable ASCII characters. A password-manager-generated password is recommended.</div></div>
+          <div class="auth-field"><label for="adminSetupConfirm">Confirm password</label><input id="adminSetupConfirm" type="password" autocomplete="new-password" minlength="16" maxlength="64" required></div>
+          <button type="submit" class="auth-btn">Activate administrator account</button>
+        </form>
+        <p id="adminAuthMessage" class="auth-message" role="status" aria-live="polite">Administrator setup and login remain disabled on the server until secure testing is complete.</p>
+        <button id="adminSwitchModeBtn" class="auth-link" type="button">First time? Set up administrator password</button>
+      </div>
     </div>
   </div>
   <div class="ov" id="shiftOverlay"><div class="modal">
@@ -361,6 +407,135 @@ function closeShift(){document.getElementById('shiftOverlay').classList.remove('
 document.getElementById('closeShiftBtn').addEventListener('click',closeShift);
 document.getElementById('shiftOverlay').addEventListener('click',event=>{if(event.target.id==='shiftOverlay')closeShift();});
 document.addEventListener('keydown',event=>{if(event.key==='Escape')closeShift();});
+
+// STEP 67: ADMINISTRATOR AUTHENTICATION UI ONLY.
+// There are deliberately NO edit/write operations in this page.
+// The server controls activation, login, session validation and access rights.
+const AUTH_BASE = API_URL.split('?')[0];
+let adminSessionToken = null; // RAM only: refresh or closing the tab signs out locally.
+let adminAuthMode = 'login';
+let adminBusy = false;
+function authElement(id){return document.getElementById(id);}
+function authShowMessage(text,kind=''){
+  const el=authElement('adminAuthMessage');
+  el.textContent=text;
+  el.className='auth-message'+(kind?' '+kind:'');
+}
+function authSetMode(mode){
+  adminAuthMode=mode;
+  authElement('adminLoginForm').classList.toggle('auth-hidden',mode!=='login');
+  authElement('adminSetupForm').classList.toggle('auth-hidden',mode!=='setup');
+  authElement('adminAuthTitle').textContent=mode==='login'?'Administrator login':'Set up administrator account';
+  authElement('adminAuthDescription').textContent=mode==='login'
+    ?'Sign in using the separate administrator password. Staff PINs do not work here.'
+    :'Activate your dedicated administrator account using a one-time code.';
+  authElement('adminSwitchModeBtn').textContent=mode==='login'
+    ?'First time? Set up administrator password':'Already activated? Return to login';
+  authShowMessage('Authentication routes remain disabled on the server until testing is complete.');
+}
+function authOpen(){
+  if(adminSessionToken)return;
+  authSetMode('login');
+  authElement('adminAuthOverlay').classList.add('open');
+  authElement('adminLoginPassword').focus();
+}
+function authClose(){
+  if(adminBusy)return;
+  authElement('adminAuthOverlay').classList.remove('open');
+  authElement('adminLoginForm').reset();
+  authElement('adminSetupForm').reset();
+}
+function authSetBusy(busy){
+  adminBusy=busy;
+  authElement('adminAuthOverlay').querySelectorAll('button,input').forEach(el=>{
+    if(el.id!=='closeAdminAuthBtn')el.disabled=busy;
+  });
+  authElement('closeAdminAuthBtn').disabled=busy;
+}
+async function authRequest(action,body,token){
+  const headers={'Accept':'application/json'};
+  if(body!==undefined)headers['Content-Type']='application/json';
+  if(token)headers['Authorization']='Bearer '+token;
+  const response=await fetch(`${AUTH_BASE}?action=${encodeURIComponent(action)}`,{
+    method:body===undefined?'GET':'POST',
+    headers,
+    body:body===undefined?undefined:JSON.stringify(body),
+    cache:'no-store',
+    credentials:'omit',
+  });
+  let data={};
+  try{data=await response.json();}catch(_e){}
+  return {response,data};
+}
+function authExplainFailure(status){
+  if(status===503)return 'Administrator authentication is not enabled yet. No changes have been made.';
+  if(status===429)return 'Too many attempts. Please try again later.';
+  if(status===401||status===400)return 'Those details were not accepted. Please check and try again.';
+  return 'The authentication service is unavailable. Please try again later.';
+}
+function authSessionUI(signedIn){
+  authElement('adminSessionPanel').classList.toggle('auth-hidden',!signedIn);
+  authElement('adminLogoutBtn').classList.toggle('auth-hidden',!signedIn);
+  authElement('adminOpenBtn').classList.toggle('auth-hidden',signedIn);
+}
+authElement('adminOpenBtn').addEventListener('click',authOpen);
+authElement('closeAdminAuthBtn').addEventListener('click',authClose);
+authElement('adminAuthOverlay').addEventListener('click',e=>{if(e.target===authElement('adminAuthOverlay'))authClose();});
+authElement('adminSwitchModeBtn').addEventListener('click',()=>{if(!adminBusy)authSetMode(adminAuthMode==='login'?'setup':'login');});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&authElement('adminAuthOverlay').classList.contains('open'))authClose();});
+authElement('adminLoginForm').addEventListener('submit',async e=>{
+  e.preventDefault();if(adminBusy)return;
+  const password=authElement('adminLoginPassword').value;
+  if(!/^[ -~]{16,64}$/.test(password)){authShowMessage('Use your administrator password (16–64 printable characters).','error');return;}
+  authSetBusy(true);authShowMessage('Checking administrator login…');
+  try{
+    const {response,data}=await authRequest('admin-login',{password});
+    if(!response.ok||data.success!==true||!/^[a-f0-9]{64}$/.test(String(data.token||''))){
+      authShowMessage(authExplainFailure(response.status),'error');return;
+    }
+    // Always check session identity on the server before displaying admin status.
+    const verified=await authRequest('session',undefined,data.token);
+    if(!verified.response.ok||verified.data.authenticated!==true||verified.data.is_admin!==true||verified.data.staff_name!=='Rota Administrator'){
+      await authRequest('logout',{},data.token).catch(()=>{});
+      authShowMessage('Administrator session could not be verified.','error');return;
+    }
+    adminSessionToken=data.token;
+    authSessionUI(true);
+    authElement('adminLoginForm').reset();
+    authElement('adminAuthOverlay').classList.remove('open');
+  }catch(_error){authShowMessage('Could not contact the authentication service.','error');}
+  finally{authSetBusy(false);}
+});
+authElement('adminSetupForm').addEventListener('submit',async e=>{
+  e.preventDefault();if(adminBusy)return;
+  const code=authElement('adminActivationCode').value.trim();
+  const password=authElement('adminSetupPassword').value;
+  const confirm=authElement('adminSetupConfirm').value;
+  if(!/^[a-f0-9]{64}$/.test(code)){authShowMessage('Enter the 64-character activation code.','error');return;}
+  if(!/^[ -~]{16,64}$/.test(password)){authShowMessage('Password must contain 16–64 printable ASCII characters.','error');return;}
+  if(password!==confirm){authShowMessage('Passwords do not match.','error');return;}
+  authSetBusy(true);authShowMessage('Activating administrator account…');
+  try{
+    const {response,data}=await authRequest('admin-activate',{code,password});
+    if(!response.ok||data.success!==true){authShowMessage(authExplainFailure(response.status),'error');return;}
+    authElement('adminSetupForm').reset();
+    authSetMode('login');
+    authShowMessage('Administrator password activated. You can now sign in when administrator login is enabled.','success');
+  }catch(_error){authShowMessage('Could not contact the activation service.','error');}
+  finally{authSetBusy(false);}
+});
+async function authLogout(){
+  const token=adminSessionToken;
+  adminSessionToken=null;authSessionUI(false);
+  if(!token)return;
+  try{await authRequest('logout',{},token);}catch(_error){
+    // If unreachable, the server token may remain valid until its 12-hour expiry.
+    alert('Signed out of this browser, but the server could not confirm session revocation. Please retry when connected.');
+  }
+}
+authElement('adminLogoutBtn').addEventListener('click',authLogout);
+authElement('adminPanelLogoutBtn').addEventListener('click',authLogout);
+
 loadSchedule();
 </script>
 </body>
