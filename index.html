@@ -183,6 +183,15 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 .staff-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--surf2);font-size:12px}
 /* TOAST */
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:9px 18px;border-radius:8px;font-size:12px;z-index:200;pointer-events:none;max-width:88vw;text-align:center;font-weight:600;box-shadow:0 4px 16px rgba(10,30,61,.25)}
+
+.admin-edit-shift{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:9px 0;border-bottom:1px solid var(--border);font-size:11px}
+.admin-edit-shift label{display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text2)}
+.admin-edit-shift select,.admin-edit-shift input{font-family:inherit;border:1px solid var(--border);border-radius:5px;padding:5px;max-width:150px}
+.admin-edit-shift .auth-btn,.admin-leave-item .auth-btn{width:auto;margin:0;padding:7px 10px}
+.admin-leave-item{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);padding:9px 0;font-size:11px}
+.admin-leave-item>div:last-child{white-space:nowrap}
+.admin-edit-note{font-size:11px;color:var(--amb);padding:8px 0}
+#adminEditFeedback{font-size:11px;color:var(--navy2);font-weight:700;margin:8px 0}
 </style>
 <style>
   .preview-flag{font-size:11px;font-weight:700;color:#0a1e3d;background:#f0c060;padding:7px 10px;border-radius:6px}
@@ -225,6 +234,15 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 .admin-report-section .rtb td,.admin-report-section .rtb th{white-space:nowrap}
 .admin-report-notice{padding:9px;border:1px solid var(--gbrd);background:var(--gbg);border-radius:7px;font-size:11px;margin:9px 0 14px;line-height:1.5;color:var(--amb)}
 @media print{.topbar,.tabs-row,.preview-notice,#adminSessionPanel,.admin-report-actions,#rv,#adminAuthOverlay,#shiftOverlay{display:none!important}#adminReportPanel{display:block!important}.admin-report-section{break-inside:avoid}body{background:#fff}}
+
+.admin-edit-shift{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:9px 0;border-bottom:1px solid var(--border);font-size:11px}
+.admin-edit-shift label{display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text2)}
+.admin-edit-shift select,.admin-edit-shift input{font-family:inherit;border:1px solid var(--border);border-radius:5px;padding:5px;max-width:150px}
+.admin-edit-shift .auth-btn,.admin-leave-item .auth-btn{width:auto;margin:0;padding:7px 10px}
+.admin-leave-item{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);padding:9px 0;font-size:11px}
+.admin-leave-item>div:last-child{white-space:nowrap}
+.admin-edit-note{font-size:11px;color:var(--amb);padding:8px 0}
+#adminEditFeedback{font-size:11px;color:var(--navy2);font-weight:700;margin:8px 0}
 </style>
 </head>
 <body>
@@ -233,7 +251,7 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
     <div><div class="logo-main">Tynemouth Squash</div><div class="logo-sub">Staff Rota</div></div>
     <div class="topbar-right admin-actions"><span class="preview-flag">SECURE UPGRADE</span><button type="button" class="login-btn" id="adminOpenBtn">Administrator</button><button type="button" class="login-btn auth-hidden" id="adminLogoutBtn">Sign out</button></div>
   </div>
-  <div class="preview-notice">Security upgrade in progress. Shift viewing is available. Private reporting is available to verified administrators while administrator login is enabled; leave, swaps, claiming shifts and all editing are disabled. Do not use this preview as a substitute for the full staff rota until the schedule has been checked.</div>
+  <div class="preview-notice">Security upgrade in progress. Shift viewing is available. Private reporting is available to verified administrators while administrator login is enabled; staff leave requests, swaps, claiming shifts and most editing remain disabled. Administrator shift edits and pending leave decisions require a verified administrator and an additional server switch. Do not use this preview as a substitute for the full staff rota until the schedule has been checked.</div>
   <div class="tabs-row">
     <div class="tabs"><span class="readonly-pill">Weekly Rota</span><button class="tab auth-hidden" id="adminReportTabBtn" type="button">Admin Report</button></div>
     <div class="week-nav">
@@ -245,11 +263,11 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
   </div>
   <section id="adminSessionPanel" class="auth-success auth-hidden" aria-live="polite">
     <h2>Administrator signed in</h2>
-    <p>Your administrator identity has been verified by the server. This is an authentication preview only: shift changes, holiday approvals and staff management are not yet enabled.</p>
+    <p>Your administrator identity has been verified by the server. Individual shift edits and pending leave decisions are available only while the separate editing switch is enabled. Staff management remains disabled.</p>
     <button class="auth-btn" id="adminPanelLogoutBtn" type="button" style="max-width:180px">Sign out</button>
   </section>
   <section id="adminReportPanel" class="auth-hidden" aria-label="Private administrator report">
-    <div class="admin-report-head"><div><h2>Administrator Report</h2><p>Private payroll, leave and requests · Friday–Thursday payroll weeks · Read only</p></div><div class="admin-report-actions"><button class="nb" id="adminReportRefreshBtn" type="button">Refresh</button><button class="nb" id="adminReportPrintBtn" type="button">Print</button><button class="nb" id="adminReportBackBtn" type="button">Back to rota</button></div></div>
+    <div class="admin-report-head"><div><h2>Administrator Report</h2><p>Private payroll, leave and requests · Friday–Thursday payroll weeks · Scoped admin changes</p></div><div class="admin-report-actions"><button class="nb" id="adminReportRefreshBtn" type="button">Refresh</button><button class="nb" id="adminReportPrintBtn" type="button">Print</button><button class="nb" id="adminReportBackBtn" type="button">Back to rota</button></div></div>
     <p id="adminReportStatus" role="status" aria-live="polite" class="ibx">Sign in to view private administrator data.</p>
     <div id="adminReportContent"></div>
   </section>
@@ -290,8 +308,7 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 </div>
 <script>
 'use strict';
-// This preview deliberately has no Supabase browser client, PINs, login,
-// write endpoint, local demo data, or privileged administration features.
+// Secure administrator access uses session-based API endpoints; no secrets are embedded in this page.
 const API_URL = 'https://oaeiikgzdyprxkfzztha.supabase.co/functions/v1/rota-api?action=schedule';
 const DAYS = ['Fri','Sat','Sun','Mon','Tue','Wed','Thu'];
 const BASE_DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
@@ -586,7 +603,7 @@ function renderAdminReport(){
   if(!adminReportVisible||!adminSessionToken)return;
   const status=authElement('adminReportStatus');
   if(!adminReportData){status.textContent='Load the administrator report to view private data.';authElement('adminReportContent').innerHTML='';return;}
-  status.textContent=`Payroll week: ${weekLabel(ws)} (Friday–Thursday). Data is read-only.`;
+  status.textContent=`Payroll week: ${weekLabel(ws)} (Friday–Thursday). Changes require administrator authorisation.`;
   const {hours,counts,details}=reportShiftGroups();
   const hol=adminReportData.hol||{};
   const names=[...new Set([...STAFF.map(x=>x.name),...Object.keys(hours),...Object.keys(hol)])];
@@ -614,7 +631,8 @@ function renderAdminReport(){
     section('Holiday balances',reportTable(['Staff','Allowance','Taken','Remaining'],leaveRows))+
     section('Leave requests',reportTable(['Staff','Type','Status','From','To','Hours'],requests))+
     section('Sickness records',reportTable(['Staff','From','To','Hours','Status'],sickRows))+
-    section('Shift details',reportTable(['Staff','Shifts this week'],detailRows));
+    section('Shift details',reportTable(['Staff','Shifts this week'],detailRows))+
+    adminEditPanel();
 }
 async function loadAdminReport(){
   if(!adminSessionToken)return;
@@ -638,6 +656,74 @@ async function loadAdminReport(){
     renderAdminReport();
   }catch(_error){status.textContent='Unable to load the administrator report. Please retry.';}
 }
+
+function adminEditDate(day){return `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;}
+function adminEditPanel(){
+  const controls=[];
+  const staffOptions=(value)=>`<option value="">Unassigned / cover needed</option>`+
+    STAFF.map(person=>`<option value="${safeText(person.name)}" ${person.name===value?'selected':''}>${safeText(person.name)}</option>`).join('');
+  for(let i=0;i<7;i++){
+    const day=new Date(ws);day.setDate(day.getDate()+i);
+    const di=day.getDay()===0?6:day.getDay()-1;
+    const key=dateKey(day,di);
+    if(adminReportData?.dOv?.[key]){
+      controls.push(`<div class="admin-edit-note">${safeText(day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))}: custom shift structure — editing requires the advanced editor in a later update.</div>`);
+      continue;
+    }
+    for(const shift of shiftsForDate(day)){
+      const originalIndex=shift.origIdx;
+      if(!Number.isInteger(originalIndex)||originalIndex<0)continue;
+      if(['hol','unpaid','sick','unavailable','cover'].includes(shift.type))continue;
+      const start=shift.s||shift.start;const end=shift.e||shift.end;
+      controls.push(`<form class="admin-edit-shift" data-edit-date="${adminEditDate(day)}" data-edit-index="${originalIndex}"><strong>${safeText(day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))}</strong><label>Staff<select name="staff">${staffOptions(shift.staff)}</select></label><label>Start<input name="start" type="time" value="${safeText(start)}" required></label><label>Finish<input name="end" type="time" value="${safeText(end)}" required></label><button type="submit" class="auth-btn">Save</button></form>`);
+    }
+  }
+  const pending=[];
+  for(const [name,h] of Object.entries(adminReportData?.hol||{})){
+    for(const [key,kind] of [['req','annual'],['upd','unpaid']]){
+      for(const r of (Array.isArray(h?.[key])?h[key]:[])){
+        if(r?.status!=='pending'||r.id===undefined||r.id===null)continue;
+        pending.push(`<div class="admin-leave-item"><div><strong>${safeText(name)} — ${kind==='annual'?'Annual':'Unpaid'} leave</strong><div>${safeText(r.date||r.dateFrom||'Date not recorded')} · ${safeText(r.hours||0)} hours</div></div><div><button class="auth-btn" data-leave-decision="approved" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Approve</button> <button class="auth-btn" data-leave-decision="declined" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Decline</button></div></div>`);
+      }
+    }
+  }
+  return `<div class="admin-report-section"><h3>Administrator controls — Update 2</h3><p class="admin-report-notice">Only individual shift assignments/times and pending annual/unpaid leave decisions are enabled in this update. Changes are saved to Supabase and audited. Custom-structure days, holiday/sick shifts, staff management and bulk resets remain locked.</p><p id="adminEditFeedback" role="status" aria-live="polite"></p><h4>Pending leave decisions</h4>${pending.join('')||'<p>No pending leave decisions.</p>'}<h4 style="margin-top:14px">Edit shifts · ${safeText(weekLabel(ws))}</h4>${controls.join('')||'<p>No eligible shifts this week.</p>'}</div>`;
+}
+let adminEditBusy=false;
+async function submitAdminEdit(operation,payload){
+  if(adminEditBusy||!adminSessionToken)return;
+  const token=adminSessionToken;
+  const status=authElement('adminEditFeedback');
+  adminEditBusy=true;if(status)status.textContent='Saving change securely…';
+  try{
+    const {response,data}=await authRequest('admin-write',{operation,payload},token);
+    if(!response.ok||data?.success!==true){
+      if(status)status.textContent=response.status===503?'Editing is disabled on the server. No change was made.':'Change not saved. '+String(data?.error||'Please review and try again.');
+      return;
+    }
+    await loadAdminReport();
+    if(adminSessionToken===token){
+      const current=authElement('adminEditFeedback');if(current)current.textContent='Saved. Administrator report refreshed.';
+    }
+  }catch(_error){if(status)status.textContent='Could not save change. Check your connection.';}
+  finally{adminEditBusy=false;}
+}
+authElement('adminReportContent').addEventListener('submit',event=>{
+  const form=event.target.closest('form[data-edit-date]');if(!form)return;
+  event.preventDefault();
+  const values=new FormData(form);
+  const payload={date:form.dataset.editDate,base_index:Number(form.dataset.editIndex),
+    staff:String(values.get('staff')||''),start:String(values.get('start')||''),end:String(values.get('end')||'')};
+  if(!confirm('Save this shift change to the live rota?'))return;
+  submitAdminEdit('edit_shift',payload);
+});
+authElement('adminReportContent').addEventListener('click',event=>{
+  const btn=event.target.closest('button[data-leave-decision]');if(!btn)return;
+  const payload={staff:btn.dataset.leaveName,kind:btn.dataset.leaveKind,request_id:btn.dataset.leaveId,decision:btn.dataset.leaveDecision};
+  if(!confirm(`${payload.decision==='approved'?'Approve':'Decline'} this ${payload.kind} leave request for ${payload.staff}?`))return;
+  submitAdminEdit('resolve_leave',payload);
+});
+
 authElement('adminReportTabBtn').addEventListener('click',()=>{reportShow(true);loadAdminReport();});
 authElement('adminReportRefreshBtn').addEventListener('click',loadAdminReport);
 authElement('adminReportBackBtn').addEventListener('click',()=>{reportShow(false);drawWeek();});
