@@ -211,17 +211,31 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 .auth-success p{font-size:12px;line-height:1.6;color:var(--text2)}
 .auth-success button{margin-top:10px}
 .auth-hidden{display:none!important}
+
+/* Update 1 — private administrator reporting */
+.admin-report-head{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;padding:18px;background:#fff;border-bottom:1px solid var(--border)}
+.admin-report-head h2{font-size:19px;color:var(--navy);margin-bottom:4px}
+.admin-report-head p{font-size:11px;color:var(--muted)}
+.admin-report-actions{display:flex;gap:7px;flex-wrap:wrap}
+#adminReportContent{padding:14px 18px 24px}
+.admin-report-section{background:#fff;border:1px solid var(--border);border-radius:10px;margin-bottom:16px;padding:14px;overflow-x:auto}
+.admin-report-section h3{font-size:14px;color:var(--navy);margin-bottom:10px}
+.admin-report-summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:9px;margin-bottom:16px}
+.admin-report-summary .rc{min-height:78px}
+.admin-report-section .rtb td,.admin-report-section .rtb th{white-space:nowrap}
+.admin-report-notice{padding:9px;border:1px solid var(--gbrd);background:var(--gbg);border-radius:7px;font-size:11px;margin:9px 0 14px;line-height:1.5;color:var(--amb)}
+@media print{.topbar,.tabs-row,.preview-notice,#adminSessionPanel,.admin-report-actions,#rv,#adminAuthOverlay,#shiftOverlay{display:none!important}#adminReportPanel{display:block!important}.admin-report-section{break-inside:avoid}body{background:#fff}}
 </style>
 </head>
 <body>
 <div class="app" id="app">
   <div class="topbar">
     <div><div class="logo-main">Tynemouth Squash</div><div class="logo-sub">Staff Rota</div></div>
-    <div class="topbar-right admin-actions"><span class="preview-flag">READ-ONLY PREVIEW</span><button type="button" class="login-btn" id="adminOpenBtn">Administrator</button><button type="button" class="login-btn auth-hidden" id="adminLogoutBtn">Sign out</button></div>
+    <div class="topbar-right admin-actions"><span class="preview-flag">SECURE UPGRADE</span><button type="button" class="login-btn" id="adminOpenBtn">Administrator</button><button type="button" class="login-btn auth-hidden" id="adminLogoutBtn">Sign out</button></div>
   </div>
-  <div class="preview-notice">Security upgrade in progress. Shift viewing is available. Administrator sign-in and setup screens are present for testing, but their server endpoints remain disabled; leave, swaps, claiming shifts and all editing are disabled. Do not use this preview as a substitute for the full staff rota until the schedule has been checked.</div>
+  <div class="preview-notice">Security upgrade in progress. Shift viewing is available. Private reporting is available to verified administrators while administrator login is enabled; leave, swaps, claiming shifts and all editing are disabled. Do not use this preview as a substitute for the full staff rota until the schedule has been checked.</div>
   <div class="tabs-row">
-    <div class="tabs"><span class="readonly-pill">Weekly Rota</span></div>
+    <div class="tabs"><span class="readonly-pill">Weekly Rota</span><button class="tab auth-hidden" id="adminReportTabBtn" type="button">Admin Report</button></div>
     <div class="week-nav">
       <button class="nb tod" id="todayBtn" type="button">Today</button>
       <button class="nb" id="prevBtn" type="button" aria-label="Previous week">&#8592;</button>
@@ -233,6 +247,11 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
     <h2>Administrator signed in</h2>
     <p>Your administrator identity has been verified by the server. This is an authentication preview only: shift changes, holiday approvals and staff management are not yet enabled.</p>
     <button class="auth-btn" id="adminPanelLogoutBtn" type="button" style="max-width:180px">Sign out</button>
+  </section>
+  <section id="adminReportPanel" class="auth-hidden" aria-label="Private administrator report">
+    <div class="admin-report-head"><div><h2>Administrator Report</h2><p>Private payroll, leave and requests · Friday–Thursday payroll weeks · Read only</p></div><div class="admin-report-actions"><button class="nb" id="adminReportRefreshBtn" type="button">Refresh</button><button class="nb" id="adminReportPrintBtn" type="button">Print</button><button class="nb" id="adminReportBackBtn" type="button">Back to rota</button></div></div>
+    <p id="adminReportStatus" role="status" aria-live="polite" class="ibx">Sign in to view private administrator data.</p>
+    <div id="adminReportContent"></div>
   </section>
   <div id="rv">
     <div class="grid-wrap"><div class="dcols" id="dg" aria-live="polite"></div></div>
@@ -399,9 +418,9 @@ async function loadSchedule(){
     dataLoaded=true;drawWeek();
   }catch(error){console.error('Rota schedule load error:',error);displayError('We could not load the verified schedule. No example or cached shift data will be shown.');}
 }
-document.getElementById('todayBtn').addEventListener('click',()=>{ws=weekStart(today);drawWeek();});
-document.getElementById('prevBtn').addEventListener('click',()=>{ws=new Date(ws);ws.setDate(ws.getDate()-7);drawWeek();});
-document.getElementById('nextBtn').addEventListener('click',()=>{ws=new Date(ws);ws.setDate(ws.getDate()+7);drawWeek();});
+document.getElementById('todayBtn').addEventListener('click',()=>{ws=weekStart(today);drawWeek();if(adminReportVisible)renderAdminReport();});
+document.getElementById('prevBtn').addEventListener('click',()=>{ws=new Date(ws);ws.setDate(ws.getDate()-7);drawWeek();if(adminReportVisible)renderAdminReport();});
+document.getElementById('nextBtn').addEventListener('click',()=>{ws=new Date(ws);ws.setDate(ws.getDate()+7);drawWeek();if(adminReportVisible)renderAdminReport();});
 document.getElementById('dg').addEventListener('click',event=>{const btn=event.target.closest('[data-shift]');if(btn){const shift=shiftDetails.get(btn.dataset.shift);if(shift)openShift(shift);}});
 function closeShift(){document.getElementById('shiftOverlay').classList.remove('open');}
 document.getElementById('closeShiftBtn').addEventListener('click',closeShift);
@@ -477,7 +496,153 @@ function authSessionUI(signedIn){
   authElement('adminSessionPanel').classList.toggle('auth-hidden',!signedIn);
   authElement('adminLogoutBtn').classList.toggle('auth-hidden',!signedIn);
   authElement('adminOpenBtn').classList.toggle('auth-hidden',signedIn);
+  authElement('adminReportTabBtn').classList.toggle('auth-hidden',!signedIn);
 }
+
+// UPDATE 1 — private, read-only administrator dashboard.
+let adminReportData=null;
+let adminReportVisible=false;
+function reportShow(visible){
+  adminReportVisible=visible && !!adminSessionToken;
+  authElement('adminReportPanel').classList.toggle('auth-hidden',!adminReportVisible);
+  authElement('rv').classList.toggle('auth-hidden',adminReportVisible);
+  authElement('adminSessionPanel').classList.toggle('auth-hidden',!adminSessionToken || adminReportVisible);
+  if(adminReportVisible) renderAdminReport();
+}
+function reportN(value){const n=Number(value);return Number.isFinite(n)?n:0;}
+function reportHrs(start,end){
+  const a=shiftTime(start),b0=shiftTime(end);if(!Number.isFinite(a)||!Number.isFinite(b0))return 0;
+  const raw=(b0<a?b0+24:b0)-a;
+  return Math.round((raw+(raw>=6.5?0.5:0))*100)/100;
+}
+function reportDateFromId(id){
+  const pos=String(id).lastIndexOf('-');if(pos<0)return null;
+  const date=new Date(String(id).slice(0,pos));
+  return Number.isNaN(date.getTime())?null:date;
+}
+function reportWeekKeyHours(keys){
+  if(!Array.isArray(keys))return 0;
+  const end=new Date(ws);end.setDate(end.getDate()+7);
+  return keys.reduce((total,id)=>{
+    const date=reportDateFromId(id);if(!date||date<ws||date>=end)return total;
+    const parts=String(id).split('-');const idx=Number(parts[parts.length-1]);
+    const slot=BASE[idx];return total+(slot?reportHrs(slot.s,slot.e):0);
+  },0);
+}
+function reportShiftGroups(){
+  const groups={};const counts={};const details={};
+  for(let i=0;i<7;i++){
+    const day=new Date(ws);day.setDate(day.getDate()+i);
+    const shifts=shiftsForDate(day);
+    shifts.forEach(s=>{
+      if(['unavailable','cover','hol','unpaid','sick'].includes(s.type))return;
+      const attendees=[];
+      if(s.staff&&s.staff!=='(unassigned)')attendees.push({name:s.staff,s:s.s||s.start,e:s.e||s.end});
+      (Array.isArray(s.extraStaff)?s.extraStaff:[]).forEach(ex=>{
+        if(typeof ex==='string')attendees.push({name:ex,s:s.s||s.start,e:s.e||s.end});
+        else if(ex&&typeof ex.name==='string')attendees.push({name:ex.name,s:ex.s||s.s||s.start,e:ex.e||s.e||s.end});
+      });
+      attendees.forEach(x=>{
+        if(!x.s||!x.e)return;
+        (groups[x.name]??={})[i]??=[];
+        groups[x.name][i].push({s:x.s,e:x.e});
+        counts[x.name]=(counts[x.name]||0)+1;
+        (details[x.name]??=[]).push(`${day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}: ${x.s}–${x.e}`);
+      });
+    });
+  }
+  const hours={};
+  for(const [name,days] of Object.entries(groups)){
+    let total=0;
+    for(const slots of Object.values(days)){
+      const times=slots.map(x=>({a:shiftTime(x.s),b:shiftTime(x.e)})).filter(x=>Number.isFinite(x.a)&&Number.isFinite(x.b)).map(x=>({...x,b:x.b<x.a?x.b+24:x.b})).sort((a,b)=>a.a-b.a);
+      const merged=[];
+      times.forEach(x=>{
+        const last=merged[merged.length-1];
+        if(last&&x.a<=last.b+0.17)last.b=Math.max(last.b,x.b);
+        else merged.push({...x});
+      });
+      merged.forEach(x=>{const raw=x.b-x.a;total+=raw+(raw>=6.5?0.5:0);});
+    }
+    hours[name]=Math.round(total*100)/100;
+  }
+  return {hours,counts,details};
+}
+function reportTable(headers,rows){
+  const th=headers.map(x=>`<th>${safeText(x)}</th>`).join('');
+  const body=rows.length?rows.map(row=>`<tr>${row.map(cell=>`<td>${safeText(cell)}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${headers.length}">No records for this selection.</td></tr>`;
+  return `<table class="rtb"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`;
+}
+function reportBalance(name){
+  const h=adminReportData?.hol?.[name]||{};
+  const contracted=BASE.filter(b=>b.staff===name).reduce((t,b)=>{
+    const raw=shiftTime(b.e)-shiftTime(b.s);return t+(raw>=0?raw:raw+24);
+  },0);
+  const allowance=contracted*4+reportN(h.contractProrata)+reportN(h.adjBaked)+reportN(h.adj);
+  const taken=reportN(h.taken);
+  return {allowance,taken,remaining:allowance-taken};
+}
+function renderAdminReport(){
+  if(!adminReportVisible||!adminSessionToken)return;
+  const status=authElement('adminReportStatus');
+  if(!adminReportData){status.textContent='Load the administrator report to view private data.';authElement('adminReportContent').innerHTML='';return;}
+  status.textContent=`Payroll week: ${weekLabel(ws)} (Friday–Thursday). Data is read-only.`;
+  const {hours,counts,details}=reportShiftGroups();
+  const hol=adminReportData.hol||{};
+  const names=[...new Set([...STAFF.map(x=>x.name),...Object.keys(hours),...Object.keys(hol)])];
+  const hrsRows=[],leaveRows=[],requests=[],sickRows=[],detailRows=[];
+  names.forEach(name=>{
+    const h=hol[name]||{};
+    const bal=reportBalance(name);
+    const filtered=r=>r&&r.status!=='declined'&&r.status!=='cancelled';
+    const holiday=(Array.isArray(h.req)?h.req:[]).filter(filtered).reduce((v,r)=>v+reportWeekKeyHours(r.shiftKeys),0);
+    const unpaid=(Array.isArray(h.upd)?h.upd:[]).filter(filtered).reduce((v,r)=>v+reportWeekKeyHours(r.shiftKeys),0);
+    const sick=(Array.isArray(h.sick)?h.sick:[]).reduce((v,r)=>v+reportWeekKeyHours(r.shiftIds||(r.shiftId?[r.shiftId]:[])),0);
+    hrsRows.push([name,String(counts[name]||0),(hours[name]||0).toFixed(1),holiday.toFixed(1),unpaid.toFixed(1),sick.toFixed(1)]);
+    leaveRows.push([name,bal.allowance.toFixed(1),bal.taken.toFixed(1),bal.remaining.toFixed(1)]);
+    for(const kind of ['req','upd']){
+      (Array.isArray(h[kind])?h[kind]:[]).forEach(r=>requests.push([name,kind==='req'?'Annual leave':'Unpaid leave',String(r.status||'Unknown'),String(r.dateFrom||r.from||r.date||'—'),String(r.dateUntil||r.to||'—'),String(r.hours??'—')]));
+    }
+    (Array.isArray(h.sick)?h.sick:[]).forEach(r=>sickRows.push([name,String(r.dateFrom||r.date||'—'),String(r.dateUntil||'—'),String(r.hours??'—'),String(r.status||'Logged')]));
+    (details[name]||[]).forEach(d=>detailRows.push([name,d]));
+  });
+  const cards=hrsRows.filter(r=>Number(r[2])>0).map(r=>`<div class="rc"><div class="rcn">${safeText(r[0])}</div><div class="rch">${safeText(r[2])}</div><div class="rcl">worked hours</div></div>`).join('');
+  const section=(title,content)=>`<div class="admin-report-section"><h3>${safeText(title)}</h3>${content}</div>`;
+  authElement('adminReportContent').innerHTML=`<div class="admin-report-summary">${cards}</div>`+
+    `<p class="admin-report-notice">Hours are calculated from the scheduled and recorded shift assignments, including overlapping-shift merging and the original 30-minute allowance for shifts of at least 6½ hours. Holiday and sickness entries are shown separately, not added to worked hours. Please review partial leave, bank-holiday premiums, sickness pay and manual adjustments against source records before running payroll.</p>`+
+    section('Weekly hours',reportTable(['Staff','Shifts','Worked hours','Holiday (indicative)','Unpaid (indicative)','Sick (indicative)'],hrsRows))+
+    section('Holiday balances',reportTable(['Staff','Allowance','Taken','Remaining'],leaveRows))+
+    section('Leave requests',reportTable(['Staff','Type','Status','From','To','Hours'],requests))+
+    section('Sickness records',reportTable(['Staff','From','To','Hours','Status'],sickRows))+
+    section('Shift details',reportTable(['Staff','Shifts this week'],detailRows));
+}
+async function loadAdminReport(){
+  if(!adminSessionToken)return;
+  const token=adminSessionToken;
+  const status=authElement('adminReportStatus');
+  status.textContent='Loading private administrator records…';
+  try{
+    const {response,data}=await authRequest('admin-report',undefined,token);
+    if(adminSessionToken!==token)return;
+    if(!response.ok){
+      adminReportData=null;
+      authElement('adminReportContent').replaceChildren();
+      status.textContent=response.status===401||response.status===403?'Administrator session expired or access denied. Please sign in again.':'Unable to load the administrator report. Please retry.';
+      if(response.status===401||response.status===403){adminSessionToken=null;authSessionUI(false);reportShow(false);loadSchedule();}
+      return;
+    }
+    if(!data||!Array.isArray(data.staff)||!Array.isArray(data.base)||!data.hol)throw new Error('Invalid report data');
+    adminReportData=data;
+    // The admin report may include extra shift assignments that are hidden on the public rota.
+    STAFF=data.staff;BASE=data.base;BASE_CHANGES=data.baseChanges||[];dOv=data.dOv||{};sOv=data.sOv||{};
+    renderAdminReport();
+  }catch(_error){status.textContent='Unable to load the administrator report. Please retry.';}
+}
+authElement('adminReportTabBtn').addEventListener('click',()=>{reportShow(true);loadAdminReport();});
+authElement('adminReportRefreshBtn').addEventListener('click',loadAdminReport);
+authElement('adminReportBackBtn').addEventListener('click',()=>{reportShow(false);drawWeek();});
+authElement('adminReportPrintBtn').addEventListener('click',()=>window.print());
+
 authElement('adminOpenBtn').addEventListener('click',authOpen);
 authElement('closeAdminAuthBtn').addEventListener('click',authClose);
 authElement('adminAuthOverlay').addEventListener('click',e=>{if(e.target===authElement('adminAuthOverlay'))authClose();});
@@ -501,6 +666,8 @@ authElement('adminLoginForm').addEventListener('submit',async e=>{
     }
     adminSessionToken=data.token;
     authSessionUI(true);
+    reportShow(true);
+    await loadAdminReport();
     authElement('adminLoginForm').reset();
     authElement('adminAuthOverlay').classList.remove('open');
   }catch(_error){authShowMessage('Could not contact the authentication service.','error');}
@@ -527,7 +694,9 @@ authElement('adminSetupForm').addEventListener('submit',async e=>{
 });
 async function authLogout(){
   const token=adminSessionToken;
-  adminSessionToken=null;authSessionUI(false);
+  adminSessionToken=null;adminReportData=null;authSessionUI(false);reportShow(false);
+  authElement('adminReportContent').replaceChildren();
+  loadSchedule();
   if(!token)return;
   try{await authRequest('logout',{},token);}catch(_error){
     // If unreachable, the server token may remain valid until its 12-hour expiry.
