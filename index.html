@@ -248,19 +248,19 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
     <div class="modal auth-modal">
       <div class="mh"><h2 id="adminAuthTitle">Administrator login</h2><button type="button" class="mcl" id="closeAdminAuthBtn" aria-label="Close">&#215;</button></div>
       <div class="mb" style="max-height:none">
-        <p class="auth-subheading" id="adminAuthDescription">Sign in using the separate administrator password. Staff PINs do not work here.</p>
+        <p class="auth-subheading" id="adminAuthDescription">Sign in using the separate administrator six-digit PIN. Staff PINs do not work here.</p>
         <form id="adminLoginForm" autocomplete="on">
-          <div class="auth-field"><label for="adminLoginPassword">Administrator password</label><input id="adminLoginPassword" type="password" autocomplete="current-password" minlength="16" maxlength="64" required></div>
+          <div class="auth-field"><label for="adminLoginPassword">Administrator PIN</label><input id="adminLoginPassword" type="password" autocomplete="off" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required></div>
           <button type="submit" class="auth-btn">Sign in</button>
         </form>
         <form id="adminSetupForm" class="auth-hidden" autocomplete="off">
           <div class="auth-field"><label for="adminActivationCode">One-time activation code</label><input id="adminActivationCode" type="text" autocapitalize="off" autocomplete="off" spellcheck="false" inputmode="text" minlength="64" maxlength="64" pattern="[a-f0-9]{64}" required><div class="auth-help">A private 64-character code issued from the Supabase SQL Editor. Never place it in GitHub or this chat.</div></div>
-          <div class="auth-field"><label for="adminSetupPassword">Choose a strong password</label><input id="adminSetupPassword" type="password" autocomplete="new-password" minlength="16" maxlength="64" required><div class="auth-help">16–64 printable ASCII characters. A password-manager-generated password is recommended.</div></div>
-          <div class="auth-field"><label for="adminSetupConfirm">Confirm password</label><input id="adminSetupConfirm" type="password" autocomplete="new-password" minlength="16" maxlength="64" required></div>
+          <div class="auth-field"><label for="adminSetupPassword">Choose a six-digit PIN</label><input id="adminSetupPassword" type="password" autocomplete="off" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required><div class="auth-help">Choose six digits that are not repeated or sequential. Do not reuse an old PIN.</div></div>
+          <div class="auth-field"><label for="adminSetupConfirm">Confirm PIN</label><input id="adminSetupConfirm" type="password" autocomplete="off" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required></div>
           <button type="submit" class="auth-btn">Activate administrator account</button>
         </form>
         <p id="adminAuthMessage" class="auth-message" role="status" aria-live="polite">Administrator setup and login remain disabled on the server until secure testing is complete.</p>
-        <button id="adminSwitchModeBtn" class="auth-link" type="button">First time? Set up administrator password</button>
+        <button id="adminSwitchModeBtn" class="auth-link" type="button">First time? Set up administrator PIN</button>
       </div>
     </div>
   </div>
@@ -427,10 +427,10 @@ function authSetMode(mode){
   authElement('adminSetupForm').classList.toggle('auth-hidden',mode!=='setup');
   authElement('adminAuthTitle').textContent=mode==='login'?'Administrator login':'Set up administrator account';
   authElement('adminAuthDescription').textContent=mode==='login'
-    ?'Sign in using the separate administrator password. Staff PINs do not work here.'
+    ?'Sign in using the separate administrator six-digit PIN. Staff PINs do not work here.'
     :'Activate your dedicated administrator account using a one-time code.';
   authElement('adminSwitchModeBtn').textContent=mode==='login'
-    ?'First time? Set up administrator password':'Already activated? Return to login';
+    ?'First time? Set up administrator PIN':'Already activated? Return to login';
   authShowMessage('Authentication routes remain disabled on the server until testing is complete.');
 }
 function authOpen(){
@@ -486,7 +486,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&authElement('adminA
 authElement('adminLoginForm').addEventListener('submit',async e=>{
   e.preventDefault();if(adminBusy)return;
   const password=authElement('adminLoginPassword').value;
-  if(!/^[ -~]{16,64}$/.test(password)){authShowMessage('Use your administrator password (16–64 printable characters).','error');return;}
+  if(!/^[0-9]{6}$/.test(password)){authShowMessage('Enter your six-digit administrator PIN.','error');return;}
   authSetBusy(true);authShowMessage('Checking administrator login…');
   try{
     const {response,data}=await authRequest('admin-login',{password});
@@ -512,15 +512,16 @@ authElement('adminSetupForm').addEventListener('submit',async e=>{
   const password=authElement('adminSetupPassword').value;
   const confirm=authElement('adminSetupConfirm').value;
   if(!/^[a-f0-9]{64}$/.test(code)){authShowMessage('Enter the 64-character activation code.','error');return;}
-  if(!/^[ -~]{16,64}$/.test(password)){authShowMessage('Password must contain 16–64 printable ASCII characters.','error');return;}
-  if(password!==confirm){authShowMessage('Passwords do not match.','error');return;}
+  if(!/^[0-9]{6}$/.test(password)){authShowMessage('PIN must contain exactly six digits.','error');return;}
+  if(/^(\d)\1{5}$/.test(password)||["123456","654321","012345","987654"].includes(password)){authShowMessage("Please choose a less predictable PIN.","error");return;}
+  if(password!==confirm){authShowMessage('PINs do not match.','error');return;}
   authSetBusy(true);authShowMessage('Activating administrator account…');
   try{
     const {response,data}=await authRequest('admin-activate',{code,password});
     if(!response.ok||data.success!==true){authShowMessage(authExplainFailure(response.status),'error');return;}
     authElement('adminSetupForm').reset();
     authSetMode('login');
-    authShowMessage('Administrator password activated. You can now sign in when administrator login is enabled.','success');
+    authShowMessage('Administrator PIN activated. You can now sign in when administrator login is enabled.','success');
   }catch(_error){authShowMessage('Could not contact the activation service.','error');}
   finally{authSetBusy(false);}
 });
