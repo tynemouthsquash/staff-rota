@@ -249,9 +249,9 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 <div class="app" id="app">
   <div class="topbar">
     <div><div class="logo-main">Tynemouth Squash</div><div class="logo-sub">Staff Rota</div></div>
-    <div class="topbar-right admin-actions"><span class="preview-flag">SECURE UPGRADE</span><button type="button" class="login-btn" id="adminOpenBtn">Administrator</button><button type="button" class="login-btn auth-hidden" id="adminLogoutBtn">Sign out</button></div>
+    <div class="topbar-right admin-actions"><span class="preview-flag">SECURE UPGRADE</span><button type="button" class="login-btn" id="staffOpenBtn">Staff Login</button><button type="button" class="login-btn auth-hidden" id="staffAccountBtn">My Account</button><button type="button" class="login-btn" id="adminOpenBtn">Administrator</button><button type="button" class="login-btn auth-hidden" id="adminLogoutBtn">Sign out</button></div>
   </div>
-  <div class="preview-notice">Security upgrade in progress. Shift viewing is available. Private reporting is available to verified administrators while administrator login is enabled; staff leave requests, swaps, claiming shifts and most editing remain disabled. Administrator shift edits and pending leave decisions require a verified administrator and an additional server switch. Do not use this preview as a substitute for the full staff rota until the schedule has been checked.</div>
+  <div class="preview-notice">Security upgrade in progress. Shift viewing is available. Private reporting is available to verified administrators while administrator login is enabled; staff self-service remains disabled until separately enabled and tested. Administrator shift edits and pending leave decisions require a verified administrator and an additional server switch. Do not use this preview as a substitute for the full staff rota until the schedule has been checked.</div>
   <div class="tabs-row">
     <div class="tabs" role="tablist" aria-label="Rota sections"><button class="tab active" id="weeklyRotaTabBtn" type="button" role="tab" aria-selected="true" aria-controls="rv">Weekly Rota</button><button class="tab auth-hidden" id="adminReportTabBtn" type="button" role="tab" aria-selected="false" aria-controls="adminReportPanel">Admin Report</button></div>
     <div class="week-nav">
@@ -264,12 +264,18 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
   <section id="adminSessionPanel" class="auth-success auth-hidden" aria-live="polite">
     <h2>Administrator signed in</h2>
     <p>Your administrator identity has been verified by the server. Individual shift edits and pending leave decisions are available only while the separate editing switch is enabled. Staff management remains disabled.</p>
-    <button class="auth-btn" id="adminPanelLogoutBtn" type="button" style="max-width:180px">Sign out</button>
+    <button class="auth-btn" id="adminChangePinBtn" type="button" style="max-width:180px">Change PIN</button><button class="auth-btn" id="adminPanelLogoutBtn" type="button" style="max-width:180px">Sign out</button>
   </section>
   <section id="adminReportPanel" class="auth-hidden" aria-label="Private administrator report">
     <div class="admin-report-head"><div><h2>Administrator Report</h2><p>Private payroll, leave and requests · Friday–Thursday payroll weeks · Scoped admin changes</p></div><div class="admin-report-actions"><button class="nb" id="adminReportRefreshBtn" type="button">Refresh</button><button class="nb" id="adminReportPrintBtn" type="button">Print</button><button class="nb" id="adminReportBackBtn" type="button">Back to rota</button></div></div>
     <p id="adminReportStatus" role="status" aria-live="polite" class="ibx">Sign in to view private administrator data.</p>
     <div id="adminReportContent"></div>
+  </section>
+  <section id="staffDashboardPanel" class="auth-hidden" aria-label="Staff account">
+    <div class="admin-report-head"><div><h2 id="staffDashboardHeading">My Account</h2><p>My leave, shift offers, and PIN settings</p></div><div class="admin-report-actions"><button class="nb" id="staffRefreshBtn" type="button">Refresh</button><button class="nb" id="staffChangePinBtn" type="button">Change PIN</button><button class="nb" id="staffSignOutBtn" type="button">Sign out</button><button class="nb" id="staffBackBtn" type="button">Back to rota</button></div></div>
+    <p class="admin-report-notice">Staff requests affect the live rota when enabled. Leave requests are pending until approved. Swaps exchange two future shifts only.</p>
+    <p id="staffFeedback" class="ibx" role="status"></p>
+    <div id="staffDashboardContent" style="padding:14px 18px"></div>
   </section>
   <div id="rv">
     <div class="grid-wrap"><div class="dcols" id="dg" aria-live="polite"></div></div>
@@ -281,6 +287,14 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
       <div class="leg"><div class="ld" style="background:#e8f0fa;border:2px solid var(--gold)"></div>Modified</div>
     </div>
   </div>
+  <div class="ov" id="staffAuthOverlay" role="dialog" aria-modal="true" aria-labelledby="staffAuthTitle">
+    <div class="modal auth-modal"><div class="mh"><h2 id="staffAuthTitle">Staff Login</h2><button type="button" class="mcl" id="staffAuthCloseBtn" aria-label="Close">&#215;</button></div><div class="mb" style="max-height:none">
+      <form id="staffLoginForm"><div class="auth-field"><label for="staffLoginName">Staff member</label><select id="staffLoginName" required></select></div><div class="auth-field"><label for="staffLoginPin">Six-digit PIN</label><input id="staffLoginPin" type="password" inputmode="numeric" autocomplete="off" minlength="6" maxlength="6" pattern="[0-9]{6}" required></div><button type="submit" class="auth-btn">Sign in</button></form>
+      <form id="staffActivationForm" class="auth-hidden"><div class="auth-field"><label for="staffActivationName">Staff member</label><select id="staffActivationName" required></select></div><div class="auth-field"><label for="staffActivationCode">Private activation code</label><input id="staffActivationCode" maxlength="64" minlength="64" pattern="[a-f0-9]{64}" required autocomplete="off"></div><div class="auth-field"><label for="staffActivationPin">New six-digit PIN</label><input id="staffActivationPin" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required></div><div class="auth-field"><label for="staffActivationConfirm">Confirm PIN</label><input id="staffActivationConfirm" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required></div><button type="submit" class="auth-btn">Activate PIN</button></form>
+      <p id="staffAuthFeedback" class="auth-message" role="status"></p><button type="button" class="auth-link" id="staffSwitchAuthBtn">First time? Activate your PIN</button>
+    </div></div>
+  </div>
+  <div class="ov" id="changePinOverlay" role="dialog" aria-modal="true" aria-labelledby="changePinTitle"><div class="modal auth-modal"><div class="mh"><h2 id="changePinTitle">Change My PIN</h2><button type="button" class="mcl" id="changePinCloseBtn" aria-label="Close">&#215;</button></div><div class="mb"><form id="changePinForm"><div class="auth-field"><label for="currentPin">Current six-digit PIN</label><input type="password" inputmode="numeric" maxlength="6" minlength="6" pattern="[0-9]{6}" id="currentPin" required></div><div class="auth-field"><label for="nextPin">New six-digit PIN</label><input type="password" inputmode="numeric" maxlength="6" minlength="6" pattern="[0-9]{6}" id="nextPin" required></div><div class="auth-field"><label for="confirmNextPin">Confirm new PIN</label><input type="password" inputmode="numeric" maxlength="6" minlength="6" pattern="[0-9]{6}" id="confirmNextPin" required></div><button type="submit" class="auth-btn">Update PIN and sign out</button></form><p class="auth-message" id="changePinFeedback" role="status"></p></div></div></div>
   <div class="ov" id="adminAuthOverlay" role="dialog" aria-modal="true" aria-labelledby="adminAuthTitle">
     <div class="modal auth-modal">
       <div class="mh"><h2 id="adminAuthTitle">Administrator login</h2><button type="button" class="mcl" id="closeAdminAuthBtn" aria-label="Close">&#215;</button></div>
@@ -419,6 +433,7 @@ function openShift(s){
   const start=s.s||s.start,end=s.e||s.end;
   const st=shiftTime(start),et=shiftTime(end);const duration=((et<st?et+24:et)-st).toFixed(2);
   document.getElementById('shiftDetails').innerHTML=`<div class="mrow"><span class="mlbl">Date</span><span class="mval">${safeText(date.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}</span></div><div class="mrow"><span class="mlbl">Staff</span><span class="mval">${safeText(name)}</span></div><div class="mrow"><span class="mlbl">Shift</span><span class="mval">${safeText(formatTime(start))}–${safeText(formatTime(end))}</span></div><div class="mrow"><span class="mlbl">Duration</span><span class="mval">${safeText(duration)} hours</span></div>${tag?`<div class="mrow"><span class="mlbl">Status</span><span class="mval">${safeText(tag)}</span></div>`:''}<div class="ibx" style="margin-top:12px">Read-only preview. Shift changes will return when secure staff authentication is complete.</div>`;
+  if(staffSessionToken && !adminSessionToken) staffShiftActions(s);
   document.getElementById('shiftOverlay').classList.add('open');
 }
 async function loadSchedule(){
@@ -512,7 +527,8 @@ function authExplainFailure(status){
 function authSessionUI(signedIn){
   authElement('adminSessionPanel').classList.toggle('auth-hidden',!signedIn);
   authElement('adminLogoutBtn').classList.toggle('auth-hidden',!signedIn);
-  authElement('adminOpenBtn').classList.toggle('auth-hidden',signedIn);
+  authElement('adminOpenBtn').classList.toggle('auth-hidden',signedIn || !!staffSessionToken);
+  authElement('staffOpenBtn').classList.toggle('auth-hidden',signedIn || !!staffSessionToken);
   authElement('adminReportTabBtn').classList.toggle('auth-hidden',!signedIn);
 }
 
@@ -728,7 +744,7 @@ authElement('adminReportContent').addEventListener('click',event=>{
   submitAdminEdit('resolve_leave',payload);
 });
 
-authElement('weeklyRotaTabBtn').addEventListener('click',()=>{reportShow(false);drawWeek();});
+authElement('weeklyRotaTabBtn').addEventListener('click',()=>{reportShow(false);staffSetView(false);drawWeek();});
 authElement('adminReportTabBtn').addEventListener('click',()=>{reportShow(true);loadAdminReport();});
 authElement('adminReportRefreshBtn').addEventListener('click',loadAdminReport);
 authElement('adminReportBackBtn').addEventListener('click',()=>{reportShow(false);drawWeek();});
@@ -796,6 +812,189 @@ async function authLogout(){
 }
 authElement('adminLogoutBtn').addEventListener('click',authLogout);
 authElement('adminPanelLogoutBtn').addEventListener('click',authLogout);
+
+
+// UPDATE 3 - Staff account (RAM-only sessions; never save bearer tokens in storage).
+let staffSessionToken=null,staffSessionName='',staffDashboardData=null,staffView=false;
+const staffEl=id=>document.getElementById(id);
+const staffMsg=(id,message)=>{const el=staffEl(id);if(el)el.textContent=message;};
+const staffValidPin=p=>/^[0-9]{6}$/.test(p)&& !/^(\d)\1{5}$/.test(p) && !['123456','654321','012345','987654'].includes(p);
+function staffShowAuth(mode){
+  staffEl('staffLoginForm').classList.toggle('auth-hidden',mode!=='login');
+  staffEl('staffActivationForm').classList.toggle('auth-hidden',mode!=='activate');
+  staffEl('staffAuthTitle').textContent=mode==='login'?'Staff Login':'Activate Your PIN';
+  staffEl('staffSwitchAuthBtn').textContent=mode==='login'?'First time? Activate your PIN':'Already activated? Sign in';
+  staffEl('staffSwitchAuthBtn').dataset.mode=mode;
+  staffMsg('staffAuthFeedback','Staff login and activation are enabled separately by the server.');
+}
+function staffOpenAuth(){staffShowAuth('login');staffEl('staffAuthOverlay').classList.add('open');}
+function staffCloseAuth(){staffEl('staffAuthOverlay').classList.remove('open');staffEl('staffLoginForm').reset();staffEl('staffActivationForm').reset();}
+function staffInitNames(){
+  for(const id of ['staffLoginName','staffActivationName']){
+    const sel=staffEl(id),before=sel.value;
+    sel.replaceChildren();
+    for(const {name} of STAFF){const o=document.createElement('option');o.value=name;o.textContent=name;sel.appendChild(o);}
+    if(STAFF.some(s=>s.name===before))sel.value=before;
+  }
+}
+function staffLoginUI(){
+  staffEl('staffOpenBtn').classList.toggle('auth-hidden',!!staffSessionToken);
+  staffEl('staffAccountBtn').classList.toggle('auth-hidden',!staffSessionToken);
+  staffEl('adminOpenBtn').classList.toggle('auth-hidden',!!staffSessionToken || !!adminSessionToken);
+}
+function staffSetView(visible){
+  staffView=!!(visible&&staffSessionToken);
+  staffEl('staffDashboardPanel').classList.toggle('auth-hidden',!staffView);
+  if(staffView){reportShow(false);staffEl('rv').classList.add('auth-hidden');}
+  else if(!adminReportVisible)staffEl('rv').classList.remove('auth-hidden');
+}
+async function staffFetchDashboard(){
+  if(!staffSessionToken)return;
+  const token=staffSessionToken;
+  try{
+    const {response,data}=await authRequest('staff-dashboard',undefined,token);
+    if(token!==staffSessionToken)return;
+    if(!response.ok){if(response.status===401){await staffSignOut();return;}throw Error(data.error||'Staff dashboard not available');}
+    staffDashboardData=data; staffRenderDashboard();
+  }catch(e){staffMsg('staffFeedback',e.message||'Could not retrieve staff account details');}
+}
+function staffShiftList(){
+  const rows=[];
+  for(let i=0;i<14;i++){
+    const date=new Date(today);date.setDate(date.getDate()+i);
+    const di=date.getDay()===0?6:date.getDay()-1;
+    if(dOv[dateKey(date,di)])continue;
+    for(const s of shiftsForDate(date)){
+      if(s.origIdx<0)continue;
+      rows.push({date:adminEditDate(date),base_index:s.origIdx,id:s.id,staff:s.staff,type:s.type||'',
+        text:`${date.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})} ${s.s||s.start}–${s.e||s.end}`});
+    }
+  }
+  return rows;
+}
+const staffOpt=(date,idx)=>({date,base_index:Number(idx)});
+async function staffDo(operation,payload){
+  if(!staffSessionToken)return;
+  staffMsg('staffFeedback','Sending secure request…');
+  try{
+    const {response,data}=await authRequest('staff-action',{operation,payload},staffSessionToken);
+    if(!response.ok)throw Error(data.error||`Action failed (${response.status})`);
+    staffMsg('staffFeedback','Saved. Rota and account details refreshed.');
+    await loadSchedule(); await staffFetchDashboard();
+    if(adminReportVisible)await loadAdminReport();
+  }catch(e){staffMsg('staffFeedback',e.message||'Could not save request');}
+}
+function staffRenderDashboard(){
+  if(!staffSessionToken||!staffDashboardData)return;
+  staffEl('staffDashboardHeading').textContent=`My Account — ${staffSessionName}`;
+  const shifts=staffShiftList(),mine=shifts.filter(x=>x.staff===staffSessionName),available=shifts.filter(x=>x.staff!==staffSessionName && (!x.staff||x.staff==='(unassigned)'||['hol','unpaid','sick','unavailable','cover'].includes(x.type)));
+  const ownOpts=mine.map(x=>`<option value="${safeText(x.date+'|'+x.base_index)}">${safeText(x.text)}</option>`).join('');
+  const openOpts=available.map(x=>`<option value="${safeText(x.date+'|'+x.base_index)}">${safeText(x.text)} (${safeText(x.type||'Vacant')})</option>`).join('');
+  const offers=staffDashboardData.offers||[],h=staffDashboardData.hol||{};
+  const myOffers=offers.filter(o=>o.staff===staffSessionName),otherOffers=offers.filter(o=>o.staff!==staffSessionName);
+  let content=`<div class="admin-report-section"><h3>My upcoming shifts</h3>${mine.length?mine.map(x=>`<div class="mrow"><span>${safeText(x.text)}</span><span>${safeText(x.type||'Scheduled')}</span></div>`).join(''):'No shifts in the next 14 days.'}</div>`;
+  content+=`<div class="admin-report-section"><h3>Shift cover</h3><form id="staffClaimForm"><div class="auth-field"><label>Available shift (next 14 days)</label><select name="shift" required>${openOpts}</select></div><button class="auth-btn" ${!available.length?'disabled':''}>Claim this shift</button></form></div>`;
+  content+=`<div class="admin-report-section"><h3>Offer a shift swap</h3><form id="staffSwapOfferForm"><div class="auth-field"><label>My shift (next 14 days)</label><select name="shift" required>${ownOpts}</select></div><button class="auth-btn" ${!mine.length?'disabled':''}>Offer shift for exchange</button></form></div>`;
+  content+=`<div class="admin-report-section"><h3>Swap offers</h3>${offers.length?offers.map(o=>{
+    const title=safeText(`${o.staff}: ${o.dateStr} ${o.s}–${o.e}`);
+    if(o.staff===staffSessionName)return `<div class="mrow"><span>${title} · ${o.vols.length} volunteers</span><button class="sbtn sr" data-swap-cancel="${safeText(o.id)}">Cancel</button></div>`+
+      o.vols.map(v=>`<div class="mrow"><span>${safeText(v.name)} offers ${safeText(v.label)}</span><button class="sbtn sg" data-swap-accept="${safeText(o.id)}" data-volunteer="${safeText(v.name)}">Accept exchange</button></div>`).join('');
+    return `<form class="staffVolunteerForm mrow" data-offer-id="${safeText(o.id)}"><span>${title}</span><select name="shift" required>${ownOpts}</select><button class="sbtn sg" ${!mine.length?'disabled':''}>Offer my shift</button></form>`;
+  }).join(''):'No open swap offers.'}</div>`;
+  content+=`<div class="admin-report-section"><h3>Request leave</h3><form id="staffLeaveForm"><div class="auth-field"><label>My shift (next 14 days)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Leave type</label><select name="kind"><option value="annual">Paid annual leave</option><option value="unpaid">Unpaid leave</option></select></div><button class="auth-btn" ${!mine.length?'disabled':''}>Submit leave request</button></form><p style="font-size:11px;margin-top:8px">One shift per request. Paid leave requires enough remaining allowance. All requests require administrator approval.</p></div>`;
+  const leave=[...(h.req||[]).map(r=>({...r,kind:'annual'})),...(h.upd||[]).map(r=>({...r,kind:'unpaid'}))];
+  content+=`<div class="admin-report-section"><h3>My leave requests</h3>${leave.length?leave.map(r=>`<div class="mrow"><span>${safeText(r.kind)} · ${safeText(r.date)} · ${safeText(r.hours)}h · ${safeText(r.status)}</span>${r.status==='pending'?`<button class="sbtn sr" data-leave-cancel="${safeText(r.id)}" data-leave-kind="${safeText(r.kind)}">Cancel</button>`:''}</div>`).join(''):'No recorded requests.'}</div>`;
+  staffEl('staffDashboardContent').innerHTML=content;
+  staffMsg('staffFeedback','Staff actions are available only when authorised by the server.');
+}
+function staffShiftActions(s){
+  if(!staffSessionToken||s.origIdx<0)return;
+  const date=adminEditDate(s._displayDate),id=s.origIdx;
+  const own=s.staff===staffSessionName,unavailable=isUnavailable(s)||['hol','unpaid','sick'].includes(s.type);
+  const actionDiv=document.createElement('div');actionDiv.className='ibx';
+  actionDiv.style.marginTop='10px';
+  if(own){
+    actionDiv.innerHTML=`<strong>Staff actions</strong><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:7px"><button type="button" class="sbtn sa" data-shift-operation="offer_swap">Offer swap</button><button type="button" class="sbtn sp" data-shift-operation="request_leave" data-leave-type="annual">Request paid leave</button><button type="button" class="sbtn sp" data-shift-operation="request_leave" data-leave-type="unpaid">Request unpaid leave</button>${s.type==='covered'?'<button type="button" class="sbtn sr" data-shift-operation="release_shift">Re-offer cover</button>':''}</div>`;
+  }else if(unavailable){actionDiv.innerHTML='<button type="button" class="auth-btn" data-shift-operation="claim_shift">Claim this shift</button>';}
+  else return;
+  actionDiv.dataset.date=date;actionDiv.dataset.baseIndex=String(id);
+  staffEl('shiftDetails').appendChild(actionDiv);
+}
+async function staffSignOut(){
+  const token=staffSessionToken;staffSessionToken=null;staffSessionName='';staffDashboardData=null;
+  staffSetView(false);staffLoginUI();staffEl('staffDashboardContent').replaceChildren();
+  if(token){try{await authRequest('logout',{},token);}catch(_e){}}
+  await loadSchedule();
+}
+staffEl('staffOpenBtn').addEventListener('click',staffOpenAuth);
+staffEl('staffAccountBtn').addEventListener('click',()=>{staffSetView(true);staffFetchDashboard();});
+staffEl('staffBackBtn').addEventListener('click',()=>staffSetView(false));
+staffEl('staffAuthCloseBtn').addEventListener('click',staffCloseAuth);
+staffEl('staffSwitchAuthBtn').addEventListener('click',()=>staffShowAuth(staffEl('staffSwitchAuthBtn').dataset.mode==='login'?'activate':'login'));
+staffEl('staffLoginForm').addEventListener('submit',async ev=>{
+  ev.preventDefault();const staff_name=staffEl('staffLoginName').value,pin=staffEl('staffLoginPin').value;
+  try{
+    const {response,data}=await authRequest('login',{staff_name,pin});
+    if(!response.ok)throw Error(data.error||'Login failed');
+    const verified=await authRequest('session',undefined,data.token);
+    if(!verified.response.ok||verified.data.staff_name!==staff_name||verified.data.is_admin===true)throw Error('Staff verification failed');
+    staffSessionToken=data.token;staffSessionName=staff_name;staffCloseAuth();staffLoginUI();staffSetView(true);await staffFetchDashboard();
+  }catch(e){staffMsg('staffAuthFeedback',e.message||'Unable to log in');}
+});
+staffEl('staffActivationForm').addEventListener('submit',async ev=>{
+  ev.preventDefault();const staff_name=staffEl('staffActivationName').value,code=staffEl('staffActivationCode').value,
+  new_pin=staffEl('staffActivationPin').value,confirmation=staffEl('staffActivationConfirm').value;
+  if(!staffValidPin(new_pin)||new_pin!==confirmation){staffMsg('staffAuthFeedback','Choose matching, less predictable six-digit PINs');return;}
+  try{const {response,data}=await authRequest('activate',{staff_name,code,new_pin});
+    if(!response.ok)throw Error(data.error||'Activation failed');
+    staffEl('staffActivationForm').reset();staffShowAuth('login');staffMsg('staffAuthFeedback','PIN activated. You can now sign in.');
+  }catch(e){staffMsg('staffAuthFeedback',e.message||'Activation failed');}
+});
+staffEl('staffSignOutBtn').addEventListener('click',staffSignOut);
+staffEl('staffRefreshBtn').addEventListener('click',staffFetchDashboard);
+staffEl('staffChangePinBtn').addEventListener('click',()=>staffEl('changePinOverlay').classList.add('open'));
+staffEl('adminChangePinBtn').addEventListener('click',()=>staffEl('changePinOverlay').classList.add('open'));
+staffEl('changePinCloseBtn').addEventListener('click',()=>staffEl('changePinOverlay').classList.remove('open'));
+staffEl('changePinForm').addEventListener('submit',async ev=>{
+  ev.preventDefault();const current_pin=staffEl('currentPin').value,new_pin=staffEl('nextPin').value,confirm=staffEl('confirmNextPin').value;
+  if(!staffValidPin(new_pin)||new_pin!==confirm){staffMsg('changePinFeedback','Choose matching, less predictable six-digit PINs');return;}
+  const token=staffSessionToken||adminSessionToken;
+  if(!token){staffMsg('changePinFeedback','Sign in first');return;}
+  try{
+    const {response,data}=await authRequest('staff-action',{operation:'change_pin',payload:{current_pin,new_pin}},token);
+    if(!response.ok)throw Error(data.error||'Could not change PIN');
+    staffEl('changePinForm').reset();staffEl('changePinOverlay').classList.remove('open');
+    if(adminSessionToken){adminSessionToken=null;adminReportData=null;authSessionUI(false);reportShow(false);staffMsg('staffFeedback','PIN updated. Please sign in again.');}
+    else await staffSignOut();
+    alert('Your PIN has been changed. Please sign in again.');
+  }catch(e){staffMsg('changePinFeedback',e.message||'Could not change PIN');}
+});
+function chosenShift(value){const [date,index]=String(value).split('|');return staffOpt(date,index);}
+staffEl('staffDashboardContent').addEventListener('submit',ev=>{
+  ev.preventDefault();const f=ev.target,shift=chosenShift(new FormData(f).get('shift'));
+  if(f.id==='staffClaimForm')staffDo('claim_shift',shift);
+  else if(f.id==='staffSwapOfferForm')staffDo('offer_swap',shift);
+  else if(f.id==='staffLeaveForm')staffDo('request_leave',{...shift,kind:new FormData(f).get('kind')});
+  else if(f.matches('.staffVolunteerForm'))staffDo('volunteer_swap',{...shift,offer_id:f.dataset.offerId});
+});
+staffEl('staffDashboardContent').addEventListener('click',ev=>{
+  const b=ev.target.closest('button');if(!b)return;
+  if(b.dataset.swapCancel)staffDo('cancel_swap',{offer_id:b.dataset.swapCancel});
+  else if(b.dataset.swapAccept){if(confirm('Exchange both shifts?'))staffDo('accept_swap',{offer_id:b.dataset.swapAccept,volunteer:b.dataset.volunteer});}
+  else if(b.dataset.leaveCancel){if(confirm('Cancel this pending leave request?'))staffDo('cancel_leave',{request_id:b.dataset.leaveCancel,kind:b.dataset.leaveKind});}
+});
+staffEl('shiftDetails').addEventListener('click',ev=>{
+  const b=ev.target.closest('[data-shift-operation]');if(!b)return;
+  const wrap=b.closest('[data-base-index]');if(!wrap)return;
+  const operation=b.dataset.shiftOperation;
+  if(operation==='request_leave'&&!confirm('Submit this leave request for administrator approval?'))return;
+  const payload={date:wrap.dataset.date,base_index:Number(wrap.dataset.baseIndex)};
+  if(operation==='request_leave')payload.kind=b.dataset.leaveType;
+  closeShift();staffSetView(true);staffDo(operation,payload);
+});
+// Refresh staff selections once the public schedule has loaded.
+const _originalLoadSchedule=loadSchedule;
+loadSchedule=async function(){await _originalLoadSchedule();if(dataLoaded)staffInitNames();};
 
 loadSchedule();
 </script>
