@@ -249,9 +249,8 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 <div class="app" id="app">
   <div class="topbar">
     <div><div class="logo-main">Tynemouth Squash</div><div class="logo-sub">Staff Rota</div></div>
-    <div class="topbar-right admin-actions"><span class="preview-flag">SECURE UPGRADE</span><button type="button" class="login-btn" id="staffOpenBtn">Staff Login</button><button type="button" class="login-btn auth-hidden" id="staffAccountBtn">My Account</button><button type="button" class="login-btn" id="adminOpenBtn">Administrator</button><button type="button" class="login-btn auth-hidden" id="adminLogoutBtn">Sign out</button></div>
+    <div class="topbar-right admin-actions"><button type="button" class="login-btn" id="staffOpenBtn">Staff Login</button><button type="button" class="login-btn auth-hidden" id="staffAccountBtn">My Account</button><button type="button" class="login-btn" id="adminOpenBtn">Administrator</button><button type="button" class="login-btn auth-hidden" id="adminLogoutBtn">Sign out</button></div>
   </div>
-  <div class="preview-notice">Security upgrade in progress. Shift viewing is available. Private reporting is available to verified administrators while administrator login is enabled; staff self-service remains disabled until separately enabled and tested. Administrator shift edits and pending leave decisions require a verified administrator and an additional server switch. Do not use this preview as a substitute for the full staff rota until the schedule has been checked.</div>
   <div class="tabs-row">
     <div class="tabs" role="tablist" aria-label="Rota sections"><button class="tab active" id="weeklyRotaTabBtn" type="button" role="tab" aria-selected="true" aria-controls="rv">Weekly Rota</button><button class="tab auth-hidden" id="adminReportTabBtn" type="button" role="tab" aria-selected="false" aria-controls="adminReportPanel">Admin Report</button></div>
     <div class="week-nav">
@@ -290,8 +289,8 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
   <div class="ov" id="staffAuthOverlay" role="dialog" aria-modal="true" aria-labelledby="staffAuthTitle">
     <div class="modal auth-modal"><div class="mh"><h2 id="staffAuthTitle">Staff Login</h2><button type="button" class="mcl" id="staffAuthCloseBtn" aria-label="Close">&#215;</button></div><div class="mb" style="max-height:none">
       <form id="staffLoginForm"><div class="auth-field"><label for="staffLoginName">Staff member</label><select id="staffLoginName" required></select></div><div class="auth-field"><label for="staffLoginPin">Six-digit PIN</label><input id="staffLoginPin" type="password" inputmode="numeric" autocomplete="off" minlength="6" maxlength="6" pattern="[0-9]{6}" required></div><button type="submit" class="auth-btn">Sign in</button></form>
-      <form id="staffActivationForm" class="auth-hidden"><div class="auth-field"><label for="staffActivationName">Staff member</label><select id="staffActivationName" required></select></div><div class="auth-field"><label for="staffActivationCode">Private activation code</label><input id="staffActivationCode" maxlength="64" minlength="64" pattern="[a-f0-9]{64}" required autocomplete="off"></div><div class="auth-field"><label for="staffActivationPin">New six-digit PIN</label><input id="staffActivationPin" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required></div><div class="auth-field"><label for="staffActivationConfirm">Confirm PIN</label><input id="staffActivationConfirm" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required></div><button type="submit" class="auth-btn">Activate PIN</button></form>
-      <p id="staffAuthFeedback" class="auth-message" role="status"></p><button type="button" class="auth-link" id="staffSwitchAuthBtn">First time? Activate your PIN</button>
+      <form id="staffActivationForm" class="auth-hidden"><div class="auth-field"><label for="staffActivationName">Staff member</label><select id="staffActivationName" required></select></div><div class="auth-field"><label for="staffActivationCode">Your original four-digit PIN</label><input id="staffActivationCode" type="password" inputmode="numeric" maxlength="4" minlength="4" pattern="[0-9]{4}" required autocomplete="off"><div class="auth-help">For first-time setup only. You must create a new six-digit PIN before signing in. Your old PIN will stop working.</div></div><div class="auth-field"><label for="staffActivationPin">New six-digit PIN</label><input id="staffActivationPin" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required></div><div class="auth-field"><label for="staffActivationConfirm">Confirm PIN</label><input id="staffActivationConfirm" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required></div><button type="submit" class="auth-btn">Activate PIN</button></form>
+      <p id="staffAuthFeedback" class="auth-message" role="status"></p><button type="button" class="auth-link" id="staffSwitchAuthBtn">First time? Set up your new PIN</button>
     </div></div>
   </div>
   <div class="ov" id="changePinOverlay" role="dialog" aria-modal="true" aria-labelledby="changePinTitle"><div class="modal auth-modal"><div class="mh"><h2 id="changePinTitle">Change My PIN</h2><button type="button" class="mcl" id="changePinCloseBtn" aria-label="Close">&#215;</button></div><div class="mb"><form id="changePinForm"><div class="auth-field"><label for="currentPin">Current six-digit PIN</label><input type="password" inputmode="numeric" maxlength="6" minlength="6" pattern="[0-9]{6}" id="currentPin" required></div><div class="auth-field"><label for="nextPin">New six-digit PIN</label><input type="password" inputmode="numeric" maxlength="6" minlength="6" pattern="[0-9]{6}" id="nextPin" required></div><div class="auth-field"><label for="confirmNextPin">Confirm new PIN</label><input type="password" inputmode="numeric" maxlength="6" minlength="6" pattern="[0-9]{6}" id="confirmNextPin" required></div><button type="submit" class="auth-btn">Update PIN and sign out</button></form><p class="auth-message" id="changePinFeedback" role="status"></p></div></div></div>
@@ -822,10 +821,10 @@ const staffValidPin=p=>/^[0-9]{6}$/.test(p)&& !/^(\d)\1{5}$/.test(p) && !['12345
 function staffShowAuth(mode){
   staffEl('staffLoginForm').classList.toggle('auth-hidden',mode!=='login');
   staffEl('staffActivationForm').classList.toggle('auth-hidden',mode!=='activate');
-  staffEl('staffAuthTitle').textContent=mode==='login'?'Staff Login':'Activate Your PIN';
-  staffEl('staffSwitchAuthBtn').textContent=mode==='login'?'First time? Activate your PIN':'Already activated? Sign in';
+  staffEl('staffAuthTitle').textContent=mode==='login'?'Staff Login':'First-time PIN Setup';
+  staffEl('staffSwitchAuthBtn').textContent=mode==='login'?'First time? Set up your new PIN':'Already set up? Sign in';
   staffEl('staffSwitchAuthBtn').dataset.mode=mode;
-  staffMsg('staffAuthFeedback','Staff login and activation are enabled separately by the server.');
+  staffMsg('staffAuthFeedback','Existing staff: sign in with your six-digit PIN. First time? Use your original four-digit PIN once to set a new one.');
 }
 function staffOpenAuth(){staffShowAuth('login');staffEl('staffAuthOverlay').classList.add('open');}
 function staffCloseAuth(){staffEl('staffAuthOverlay').classList.remove('open');staffEl('staffLoginForm').reset();staffEl('staffActivationForm').reset();}
@@ -942,10 +941,10 @@ staffEl('staffLoginForm').addEventListener('submit',async ev=>{
   }catch(e){staffMsg('staffAuthFeedback',e.message||'Unable to log in');}
 });
 staffEl('staffActivationForm').addEventListener('submit',async ev=>{
-  ev.preventDefault();const staff_name=staffEl('staffActivationName').value,code=staffEl('staffActivationCode').value,
+  ev.preventDefault();const staff_name=staffEl('staffActivationName').value,old_pin=staffEl('staffActivationCode').value,
   new_pin=staffEl('staffActivationPin').value,confirmation=staffEl('staffActivationConfirm').value;
   if(!staffValidPin(new_pin)||new_pin!==confirmation){staffMsg('staffAuthFeedback','Choose matching, less predictable six-digit PINs');return;}
-  try{const {response,data}=await authRequest('activate',{staff_name,code,new_pin});
+  try{const {response,data}=await authRequest('legacy-activate',{staff_name,old_pin,new_pin});
     if(!response.ok)throw Error(data.error||'Activation failed');
     staffEl('staffActivationForm').reset();staffShowAuth('login');staffMsg('staffAuthFeedback','PIN activated. You can now sign in.');
   }catch(e){staffMsg('staffAuthFeedback',e.message||'Activation failed');}
