@@ -347,7 +347,6 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
   </section>
   <section id="staffDashboardPanel" class="auth-hidden" aria-label="Staff account">
     <div class="admin-report-head"><div><h2 id="staffDashboardHeading">My Account</h2><p>My leave, shift offers, and PIN settings</p></div><div class="admin-report-actions"><button class="nb" id="staffRefreshBtn" type="button">Refresh</button><button class="nb" id="staffChangePinBtn" type="button">Change PIN</button><button class="nb" id="staffSignOutBtn" type="button">Sign out</button><button class="nb" id="staffBackBtn" type="button">Back to rota</button></div></div>
-    <p class="admin-report-notice">Staff requests affect the live rota when enabled. Leave requests are pending until approved. Swaps exchange two future shifts only.</p>
     <p id="staffFeedback" class="ibx" role="status"></p>
     <div id="staffDashboardContent" style="padding:14px 18px"></div>
   </section>
@@ -1063,7 +1062,6 @@ function staffRenderDashboard(){
   const leave=[...(h.req||[]).map(r=>({...r,kind:'annual'})),...(h.upd||[]).map(r=>({...r,kind:'unpaid'}))];
   content+=`<div class="admin-report-section staff-leave-requests"><h3>My leave requests</h3>${leave.length?leave.map(r=>`<div class="mrow"><span>${safeText(r.kind)} · ${safeText(r.date)} · ${safeText(reportN(r.hours).toFixed(1))}h · ${safeText(r.status)}</span>${r.status==='pending'?`<button class="sbtn sr" data-leave-cancel="${safeText(r.id)}" data-leave-kind="${safeText(r.kind)}">Cancel</button>`:''}</div>`).join(''):'No recorded requests.'}</div>`;
   staffEl('staffDashboardContent').innerHTML=content;
-  staffMsg('staffFeedback','All requests are checked by the secure server before any change is saved.');
 }
 function staffShiftActions(s){
   if(!staffSessionToken||s.origIdx<0||s.type==='restricted')return;
