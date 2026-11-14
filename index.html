@@ -241,6 +241,23 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 .admin-leave-scroll .rtb thead{position:sticky;top:0;background:#fff;z-index:1}
 .staff-more{margin-top:7px;border-top:1px solid var(--border);padding-top:6px}
 .staff-more summary{cursor:pointer;font-size:11px;font-weight:700;color:var(--navy)}
+
+/* v15.32.3 — notification navigation and claim cards */
+#staffNotificationsSection{scroll-margin-top:16px}
+#staffCoverSection{scroll-margin-top:16px}
+.staff-alert-action{display:inline-flex;align-items:center;gap:6px;margin-top:6px;background:#fff;border:1px solid var(--gbrd);border-radius:5px;padding:5px 9px;color:var(--navy);font-family:inherit;font-size:11px;font-weight:700;cursor:pointer}
+.staff-alert-action:hover,.staff-alert-action:focus-visible{border-color:var(--navy);outline-offset:2px}
+.staff-cover-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px;margin-top:9px}
+.staff-cover-card{background:var(--surf);border:1px solid var(--border);border-left:3px solid var(--gold);border-radius:8px;padding:11px 12px;display:flex;justify-content:space-between;align-items:center;gap:12px;min-width:0}
+.staff-cover-info{min-width:0;display:flex;flex-direction:column;gap:3px}
+.staff-cover-date{font-size:12px;font-weight:800;color:var(--navy)}
+.staff-cover-times{font-size:11px;color:var(--text2)}
+.staff-cover-tag{font-size:10px;color:var(--green);font-weight:700}
+.staff-cover-card .auth-btn{width:auto;flex-shrink:0;margin:0;padding:7px 11px;font-size:11px}
+.staff-cover-card .auth-btn:disabled{opacity:.55;cursor:wait}
+.staff-focus-flash{outline:2px solid var(--gold);outline-offset:3px;animation:staffHighlight 1.4s ease-out}
+@keyframes staffHighlight{from{background:var(--gbg)}to{background:#fff}}
+@media(max-width:520px){.staff-cover-list{grid-template-columns:1fr}}
 </style>
 <style>
   .preview-flag{font-size:11px;font-weight:700;color:#0a1e3d;background:#f0c060;padding:7px 10px;border-radius:6px}
@@ -997,7 +1014,6 @@ function staffRenderDashboard(){
   staffEl('staffDashboardHeading').textContent=`My Account — ${staffSessionName}`;
   const shifts=staffShiftList(),mine=shifts.filter(x=>x.staff===staffSessionName),available=shifts.filter(x=>x.staff!==staffSessionName && (x.type!=='restricted'&&(!x.staff||x.staff==='(unassigned)'||['unavailable','cover'].includes(x.type))));
   const ownOpts=mine.map(x=>`<option value="${safeText(x.date+'|'+x.base_index)}">${safeText(x.text)}</option>`).join('');
-  const openOpts=available.map(x=>`<option value="${safeText(x.date+'|'+x.base_index)}">${safeText(x.text)} (${safeText(x.type||'Vacant')})</option>`).join('');
   const offers=staffDashboardData.offers||[],h=staffDashboardData.hol||{};
   const myOffers=offers.filter(o=>o.staff===staffSessionName),otherOffers=offers.filter(o=>o.staff!==staffSessionName&&o.dateStr>=adminEditDate(today));
   // Snapshot figures are calculated from published assignments, not attendance records.
@@ -1032,12 +1048,12 @@ function staffRenderDashboard(){
   staffEl('staffAlertsCount').textContent=String(available.length+otherOffers.length+pendingVols+pendingLeave);
   const stat=(label,value,detail)=>`<div class="staff-stat"><div class="staff-stat-label">${safeText(label)}</div><div class="staff-stat-number">${safeText(value)}</div><div class="staff-stat-detail">${safeText(detail)}</div></div>`;
   let content=`<div class="staff-stats">${stat('This week',current.hrs+' hrs',current.shifts+' scheduled shifts')}${stat('Last week',last.hrs+' hrs','Scheduled, not confirmed worked')}${stat('Holiday remaining',holidayLeft.toFixed(1)+' hrs','Indicative; confirm with admin')}${stat('Next shift',next?next.text.split(' ').slice(0,3).join(' '):'None',next?next.text:'No scheduled upcoming shift')}</div>`;
-  content+=`<div class="admin-report-section"><h3>Notifications & upcoming activity</h3>${notices.join('')||'<p>No new shift offers or outstanding requests.</p>'}</div>`;
+  content+=`<div class="admin-report-section" id="staffNotificationsSection" tabindex="-1"><h3>Notifications & upcoming activity</h3>${notices.join('')||'<p>No new shift offers or outstanding requests.</p>'}${available.length?'<button type="button" class="staff-alert-action" data-staff-jump="staffCoverSection">View shifts available to claim</button>':''}${otherOffers.length?'<button type="button" class="staff-alert-action" data-staff-jump="staffSwapsSection">View swap offers</button>':''}</div>`;
   content+=`<div class="admin-report-section staff-upcoming"><h3>My upcoming shifts</h3>${mine.length?mine.slice(0,7).map(x=>`<div class="mrow"><span>${safeText(x.text)}</span><span>${safeText(x.type||'Scheduled')}</span></div>`).join('')+(mine.length>7?`<details class="staff-more"><summary>Show ${mine.length-7} more upcoming shifts</summary>${mine.slice(7).map(x=>`<div class="mrow"><span>${safeText(x.text)}</span><span>${safeText(x.type||'Scheduled')}</span></div>`).join('')}</details>`:''):'No shifts in the next three months.'}</div>`;
-  content+=`<div class="admin-report-section"><h3>Shift cover</h3><form id="staffClaimForm"><div class="auth-field"><label>Available shift (next three months)</label><select name="shift" required>${openOpts}</select></div><button class="auth-btn" ${!available.length?'disabled':''}>Claim this shift</button></form></div>`;
+  content+=`<div class="admin-report-section" id="staffCoverSection" tabindex="-1"><h3>Shift cover · Available to claim</h3>${available.length?`<p class="admin-edit-note">${available.length} shift${available.length===1?'':'s'} available in the next three months.</p><div class="staff-cover-list">${available.map(x=>`<article class="staff-cover-card"><div class="staff-cover-info"><span class="staff-cover-date">${safeText(new Date(x.date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}))}</span><span class="staff-cover-times">${safeText(x.text.replace(/^\S+\s+\d+\s+\S+\s*/,''))}</span><span class="staff-cover-tag">Cover needed</span></div><button type="button" class="auth-btn" data-staff-claim="${safeText(x.date+'|'+x.base_index)}" aria-label="Claim shift ${safeText(x.text)}">Claim</button></article>`).join('')}</div>`:'<p>No cover shifts currently available.</p>'}</div>`;
   const colleagueOptions=STAFF.filter(s=>s.name!==staffSessionName).map(s=>`<option value="${safeText(s.name)}">${safeText(s.name)}</option>`).join('');
   content+=`<div class="admin-report-section"><h3>Offer a shift swap</h3><form id="staffSwapOfferForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Who should see this offer?</label><select name="target_staff"><option value="">All colleagues</option>${colleagueOptions}</select></div><button class="auth-btn" ${!mine.length?'disabled':''}>Offer shift for exchange</button></form><p class="admin-edit-note">If you choose a colleague, only they can respond. They must offer one of their own available shifts for you to approve.</p></div>`;
-  content+=`<div class="admin-report-section"><h3>Swap offers</h3>${offers.length?offers.map(o=>{
+  content+=`<div class="admin-report-section" id="staffSwapsSection" tabindex="-1"><h3>Swap offers</h3>${offers.length?offers.map(o=>{
     const title=safeText(`${o.staff}: ${o.dateStr} ${o.s}–${o.e}${o.target_staff?' · offered to '+o.target_staff:''}`);
     if(o.staff===staffSessionName)return `<div class="mrow"><span>${title} · ${o.vols.length} volunteers</span><button class="sbtn sr" data-swap-cancel="${safeText(o.id)}">Cancel</button></div>`+
       o.vols.map(v=>`<div class="mrow"><span>${safeText(v.name)} offers ${safeText(v.label)}</span><button class="sbtn sg" data-swap-accept="${safeText(o.id)}" data-volunteer="${safeText(v.name)}">Accept exchange</button></div>`).join('');
@@ -1070,7 +1086,20 @@ async function staffSignOut(){
 }
 staffEl('staffOpenBtn').addEventListener('click',staffOpenAuth);
 staffEl('staffAccountBtn').addEventListener('click',async()=>{staffSetView(true);await loadSchedule();await staffFetchDashboard();});
-staffEl('staffAlertsBtn').addEventListener('click',async()=>{staffSetView(true);await loadSchedule();await staffFetchDashboard();});
+function staffJumpTo(sectionId){
+  const section=staffEl(sectionId);
+  if(!section)return;
+  section.scrollIntoView({behavior:'smooth',block:'start'});
+  section.focus({preventScroll:true});
+  section.classList.add('staff-focus-flash');
+  section.addEventListener('animationend',()=>section.classList.remove('staff-focus-flash'),{once:true});
+}
+staffEl('staffAlertsBtn').addEventListener('click',async()=>{
+  staffSetView(true);
+  await loadSchedule();
+  await staffFetchDashboard();
+  staffJumpTo('staffNotificationsSection');
+});
 staffEl('staffBackBtn').addEventListener('click',()=>staffSetView(false));
 staffEl('staffAuthCloseBtn').addEventListener('click',staffCloseAuth);
 staffEl('staffSwitchAuthBtn').addEventListener('click',()=>staffShowAuth(staffEl('staffSwitchAuthBtn').dataset.mode==='login'?'activate':'login'));
@@ -1116,13 +1145,21 @@ staffEl('changePinForm').addEventListener('submit',async ev=>{
 function chosenShift(value){const [date,index]=String(value).split('|');return staffOpt(date,index);}
 staffEl('staffDashboardContent').addEventListener('submit',ev=>{
   ev.preventDefault();const f=ev.target,shift=chosenShift(new FormData(f).get('shift'));
-  if(f.id==='staffClaimForm')staffDo('claim_shift',shift);
-  else if(f.id==='staffSwapOfferForm')staffDo('offer_swap',{...shift,target_staff:String(new FormData(f).get('target_staff')||'')});
+  if(f.id==='staffSwapOfferForm')staffDo('offer_swap',{...shift,target_staff:String(new FormData(f).get('target_staff')||'')});
   else if(f.id==='staffLeaveForm')staffDo('request_leave',{...shift,kind:new FormData(f).get('kind')});
   else if(f.matches('.staffVolunteerForm'))staffDo('volunteer_swap',{...shift,offer_id:f.dataset.offerId});
 });
 staffEl('staffDashboardContent').addEventListener('click',ev=>{
   const b=ev.target.closest('button');if(!b)return;
+  if(b.dataset.staffJump){staffJumpTo(b.dataset.staffJump);return;}
+  if(b.dataset.staffClaim){
+    const shift=chosenShift(b.dataset.staffClaim);
+    if(!Number.isInteger(shift.base_index)||!/^\d{4}-\d{2}-\d{2}$/.test(shift.date))return;
+    if(!confirm('Claim this cover shift? It will be assigned to you on the rota.'))return;
+    b.disabled=true;b.textContent='Claiming…';
+    staffDo('claim_shift',shift).finally(()=>{if(b.isConnected){b.disabled=false;b.textContent='Claim';}});
+    return;
+  }
   if(b.dataset.swapCancel)staffDo('cancel_swap',{offer_id:b.dataset.swapCancel});
   else if(b.dataset.swapAccept){if(confirm('Exchange both shifts?'))staffDo('accept_swap',{offer_id:b.dataset.swapAccept,volunteer:b.dataset.volunteer});}
   else if(b.dataset.leaveCancel){if(confirm('Cancel this pending leave request?'))staffDo('cancel_leave',{request_id:b.dataset.leaveCancel,kind:b.dataset.leaveKind});}
