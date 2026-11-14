@@ -258,6 +258,19 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 .staff-focus-flash{outline:2px solid var(--gold);outline-offset:3px;animation:staffHighlight 1.4s ease-out}
 @keyframes staffHighlight{from{background:var(--gbg)}to{background:#fff}}
 @media(max-width:520px){.staff-cover-list{grid-template-columns:1fr}}
+
+/* v15.32.5: independent weeks for administrator exchanges */
+.admin-exchange-card .admin-edit-shift{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto}
+.admin-exchange-choice{display:flex;flex-direction:column;gap:6px;min-width:0}
+.admin-exchange-choice>strong{font-size:11px}
+.admin-exchange-choice>select{width:100%;max-width:none;min-width:0;padding:7px 5px;border:1px solid var(--border);border-radius:5px}
+.admin-exchange-week-picker{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:10px}
+.admin-exchange-week-picker>span{font-weight:700;flex:1;min-width:100px;text-align:center}
+.admin-exchange-week-picker input[type=date]{font:inherit;border:1px solid var(--border);border-radius:5px;padding:4px;max-width:132px;min-width:0}
+.admin-exchange-week-picker .nb{padding:4px 7px}
+.staff-inline-feedback{margin:8px 0 0;font-size:12px;font-weight:700;min-height:1.2em}
+@media(max-width:650px){.admin-exchange-card .admin-edit-shift{grid-template-columns:1fr}}
+
 </style>
 <style>
   .preview-flag{font-size:11px;font-weight:700;color:#0a1e3d;background:#f0c060;padding:7px 10px;border-radius:6px}
@@ -752,6 +765,8 @@ async function loadAdminReport(){
 }
 
 let adminControlsWs=weekStart(today);
+let adminExchangeWeekA=weekStart(today);
+let adminExchangeWeekB=(()=>{const d=weekStart(today);d.setDate(d.getDate()+7);return d;})();
 function adminEditDate(day){return `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;}
 function adminEditPanel(){
   const controls=[];
@@ -782,18 +797,26 @@ function adminEditPanel(){
       }
     }
   }
-  const exchangeSlots=[];
-  for(let i=0;i<7;i++){
-    const day=new Date(adminControlsWs);day.setDate(day.getDate()+i);
-    const di=day.getDay()===0?6:day.getDay()-1;
-    if(adminReportData?.dOv?.[dateKey(day,di)])continue;
-    for(const sh of shiftsForDate(day)){
-      if(day<today||sh.origIdx<0||!sh.staff||sh.staff==='(unassigned)'||['hol','unpaid','sick','cover','unavailable'].includes(sh.type))continue;
-      const v=adminEditDate(day)+'|'+sh.origIdx;
-      exchangeSlots.push(`<option value="${safeText(v)}">${safeText(day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))} · ${safeText(sh.staff)} · ${safeText(sh.s||sh.start)}–${safeText(sh.e||sh.end)}</option>`);
+  // Independent week selectors permit exchange between any two eligible future weeks.
+  const exchangeSlotsForWeek=(ws)=>{
+    const options=[];
+    for(let i=0;i<7;i++){
+      const day=new Date(ws);day.setDate(day.getDate()+i);
+      const di=day.getDay()===0?6:day.getDay()-1;
+      if(adminReportData?.dOv?.[dateKey(day,di)])continue;
+      for(const sh of shiftsForDate(day)){
+        if(day<today||sh.origIdx<0||!sh.staff||sh.staff==='(unassigned)'||
+          ['hol','unpaid','sick','cover','unavailable','covered'].includes(sh.type))continue;
+        const v=adminEditDate(day)+'|'+sh.origIdx;
+        options.push(`<option value="${safeText(v)}">${safeText(day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))} · ${safeText(sh.staff)} · ${safeText(sh.s||sh.start)}–${safeText(sh.e||sh.end)}</option>`);
+      }
     }
-  }
-  const exchangeForm=`<div class="admin-exchange-card"><h4 style="margin:0 0 5px">Exchange two shifts</h4><form id="adminExchangeForm" class="admin-edit-shift"><label>First shift<select name="first" required>${exchangeSlots.join('')}</select></label><label>Second shift<select name="second" required>${exchangeSlots.join('')}</select></label><button class="auth-btn" type="submit" ${exchangeSlots.length<2?'disabled':''}>Exchange shifts</button></form><p class="admin-edit-note">Administrator-only. Works on eligible shifts in the selected week. Conflicting open swap offers or leave entries are rejected. Past-dated exchanges are not permitted; use the shift editor to correct previous weeks.</p></div>`;
+    return options;
+  };
+  const exchangeSlotsA=exchangeSlotsForWeek(adminExchangeWeekA);
+  const exchangeSlotsB=exchangeSlotsForWeek(adminExchangeWeekB);
+  const exchangeWeekPicker=(side,ws)=>`<div class="admin-exchange-week-picker"><button type="button" class="nb" data-exchange-week="${side}" data-exchange-delta="-1" aria-label="Previous week">&#8592;</button><span>${safeText(weekLabel(ws))}</span><button type="button" class="nb" data-exchange-week="${side}" data-exchange-delta="1" aria-label="Next week">&#8594;</button><input type="date" data-exchange-date="${side}" value="${adminEditDate(ws)}" aria-label="Choose week for shift ${side}"></div>`;
+  const exchangeForm=`<div class="admin-exchange-card"><h4 style="margin:0 0 5px">Exchange two shifts · any future weeks</h4><form id="adminExchangeForm" class="admin-edit-shift"><div class="admin-exchange-choice"><strong>First shift</strong>${exchangeWeekPicker('A',adminExchangeWeekA)}<select name="first" required>${exchangeSlotsA.join('')}</select></div><div class="admin-exchange-choice"><strong>Second shift</strong>${exchangeWeekPicker('B',adminExchangeWeekB)}<select name="second" required>${exchangeSlotsB.join('')}</select></div><button class="auth-btn" type="submit" ${!exchangeSlotsA.length||!exchangeSlotsB.length?'disabled':''}>Exchange shifts</button></form><p class="admin-edit-note">Choose a different week for each shift as needed. Exchanges only work for eligible future assignments; pending offers, cover and leave restrictions still apply. To correct a previous week, use the individual Shift Editor below.</p></div>`;
   const navigator=`<div class="admin-week-toolbar"><div class="admin-week-title">Editing week: ${safeText(weekLabel(adminControlsWs))}</div><div class="admin-week-buttons"><button type="button" class="nb" data-admin-week="-1" aria-label="Previous editing week">&#8592; Previous</button><button type="button" class="nb" data-admin-week="0">This week</button><button type="button" class="nb" data-admin-week="1" aria-label="Next editing week">Next &#8594;</button><label style="font-size:10px">Jump to date <input type="date" id="adminWeekJump" value="${adminEditDate(adminControlsWs)}" aria-label="Jump to an editing week"></label></div></div>`;
   return `<div class="admin-report-section"><h3>Administrator controls</h3><p class="admin-report-notice">Administrator edits are securely saved and audited. Previous weeks may be corrected through the shift editor. Direct exchanges are available for eligible future shifts only.</p><p id="adminEditFeedback" role="status" aria-live="polite"></p><h4>Pending leave decisions</h4>${pending.join('')||'<p>No pending leave decisions.</p>'}${navigator}${exchangeForm}<h4 style="margin:8px 0">Edit shifts · ${safeText(weekLabel(adminControlsWs))}</h4><div class="admin-controls-grid">${controls.join('')||'<p>No eligible shifts this week.</p>'}</div></div>`;
 }
@@ -837,6 +860,17 @@ authElement('adminReportContent').addEventListener('submit',event=>{
   submitAdminEdit('edit_shift',payload);
 });
 authElement('adminReportContent').addEventListener('click',event=>{
+  const exNav=event.target.closest('button[data-exchange-week]');
+  if(exNav){
+    const side=exNav.dataset.exchangeWeek;
+    const delta=Number(exNav.dataset.exchangeDelta);
+    if(!['A','B'].includes(side)||![-1,1].includes(delta))return;
+    const d=new Date(side==='A'?adminExchangeWeekA:adminExchangeWeekB);
+    d.setDate(d.getDate()+delta*7);
+    if(d.getFullYear()<2020||d.getFullYear()>2099)return;
+    if(side==='A')adminExchangeWeekA=d;else adminExchangeWeekB=d;
+    renderAdminReport();return;
+  }
   const nav=event.target.closest('button[data-admin-week]');
   if(nav){
     const delta=Number(nav.dataset.adminWeek);
@@ -856,6 +890,14 @@ authElement('adminReportContent').addEventListener('click',event=>{
 });
 
 authElement('adminReportContent').addEventListener('change',event=>{
+  const side=event.target?.dataset?.exchangeDate;
+  if(side==='A'||side==='B'){
+    const picked=parseDate(String(event.target.value||''));
+    if(!picked)return;
+    const ws=weekStart(picked);
+    if(side==='A')adminExchangeWeekA=ws;else adminExchangeWeekB=ws;
+    renderAdminReport();return;
+  }
   if(event.target?.id!=='adminWeekJump')return;
   const date=parseDate(String(event.target.value||''));
   if(!date||Number.isNaN(date.getTime())||date.getFullYear()<2020||date.getFullYear()>2099)return;
@@ -997,22 +1039,31 @@ function staffShiftList(){
   return rows;
 }
 const staffOpt=(date,idx)=>({date,base_index:Number(idx)});
-async function staffDo(operation,payload){
+async function staffDo(operation,payload,feedbackId){
   if(!staffSessionToken)return;
   staffMsg('staffFeedback','Sending secure request…');
+  if(feedbackId)staffMsg(feedbackId,'Submitting swap offer…');
   try{
     const {response,data}=await authRequest('staff-action',{operation,payload},staffSessionToken);
     if(!response.ok)throw Error(data.error||`Action failed (${response.status})`);
     staffMsg('staffFeedback','Saved. Rota and account details refreshed.');
+    if(feedbackId)staffMsg(feedbackId,'Swap offer posted. Colleagues can now respond.');
     await loadSchedule(); await staffFetchDashboard();
     if(adminReportVisible)await loadAdminReport();
-  }catch(e){staffMsg('staffFeedback',e.message||'Could not save request');}
+    return true;
+  }catch(e){
+    const message=e.message||'Could not save request';
+    staffMsg('staffFeedback',message);
+    if(feedbackId)staffMsg(feedbackId,'Offer not saved: '+message);
+    return false;
+  }
 }
 function staffRenderDashboard(){
   if(!staffSessionToken||!staffDashboardData)return;
   staffEl('staffDashboardHeading').textContent=`My Account — ${staffSessionName}`;
   const shifts=staffShiftList(),mine=shifts.filter(x=>x.staff===staffSessionName),available=shifts.filter(x=>x.staff!==staffSessionName && (x.type!=='restricted'&&(!x.staff||x.staff==='(unassigned)'||['unavailable','cover'].includes(x.type))));
-  const ownOpts=mine.map(x=>`<option value="${safeText(x.date+'|'+x.base_index)}">${safeText(x.text)}</option>`).join('');
+  const eligibleMine=mine.filter(x=>!['hol','unpaid','sick','unavailable','cover','swap','swapped'].includes(x.type));
+  const ownOpts=eligibleMine.map(x=>`<option value="${safeText(x.date+'|'+x.base_index)}">${safeText(x.text)}</option>`).join('');
   const offers=staffDashboardData.offers||[],h=staffDashboardData.hol||{};
   const myOffers=offers.filter(o=>o.staff===staffSessionName),otherOffers=offers.filter(o=>o.staff!==staffSessionName&&o.dateStr>=adminEditDate(today));
   // Snapshot figures are calculated from published assignments, not attendance records.
@@ -1051,14 +1102,14 @@ function staffRenderDashboard(){
   content+=`<div class="admin-report-section staff-upcoming"><h3>My upcoming shifts</h3>${mine.length?mine.slice(0,7).map(x=>`<div class="mrow"><span>${safeText(x.text)}</span><span>${safeText(x.type||'Scheduled')}</span></div>`).join('')+(mine.length>7?`<details class="staff-more"><summary>Show ${mine.length-7} more upcoming shifts</summary>${mine.slice(7).map(x=>`<div class="mrow"><span>${safeText(x.text)}</span><span>${safeText(x.type||'Scheduled')}</span></div>`).join('')}</details>`:''):'No shifts in the next three months.'}</div>`;
   content+=`<div class="admin-report-section" id="staffCoverSection" tabindex="-1"><h3>Shift cover · Available to claim</h3>${available.length?`<p class="admin-edit-note">${available.length} shift${available.length===1?'':'s'} available in the next three months.</p><div class="staff-cover-list">${available.map(x=>`<article class="staff-cover-card"><div class="staff-cover-info"><span class="staff-cover-date">${safeText(new Date(x.date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}))}</span><span class="staff-cover-times">${safeText(x.text.replace(/^\S+\s+\d+\s+\S+\s*/,''))}</span><span class="staff-cover-tag">Cover needed</span></div><button type="button" class="auth-btn" data-staff-claim="${safeText(x.date+'|'+x.base_index)}" aria-label="Claim shift ${safeText(x.text)}">Claim</button></article>`).join('')}</div>`:'<p>No cover shifts currently available.</p>'}</div>`;
   const colleagueOptions=STAFF.filter(s=>s.name!==staffSessionName).map(s=>`<option value="${safeText(s.name)}">${safeText(s.name)}</option>`).join('');
-  content+=`<div class="admin-report-section"><h3>Offer a shift swap</h3><form id="staffSwapOfferForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Who should see this offer?</label><select name="target_staff"><option value="">All colleagues</option>${colleagueOptions}</select></div><button class="auth-btn" ${!mine.length?'disabled':''}>Offer shift for exchange</button></form><p class="admin-edit-note">If you choose a colleague, only they can respond. They must offer one of their own available shifts for you to approve.</p></div>`;
+  content+=`<div class="admin-report-section" id="staffSwapOfferSection" tabindex="-1"><h3>Offer a shift swap</h3><form id="staffSwapOfferForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Who should see this offer?</label><select name="target_staff"><option value="">All colleagues</option>${colleagueOptions}</select></div><button class="auth-btn" ${!eligibleMine.length?'disabled':''}>Offer shift for exchange</button><p id="staffSwapOfferFeedback" class="staff-inline-feedback" role="status" aria-live="polite"></p></form><p class="admin-edit-note">If you choose a colleague, only they can respond. They must offer one of their own available shifts for you to approve.</p></div>`;
   content+=`<div class="admin-report-section" id="staffSwapsSection" tabindex="-1"><h3>Swap offers</h3>${offers.length?offers.map(o=>{
     const title=safeText(`${o.staff}: ${o.dateStr} ${o.s}–${o.e}${o.target_staff?' · offered to '+o.target_staff:''}`);
     if(o.staff===staffSessionName)return `<div class="mrow"><span>${title} · ${o.vols.length} volunteers</span><button class="sbtn sr" data-swap-cancel="${safeText(o.id)}">Cancel</button></div>`+
       o.vols.map(v=>`<div class="mrow"><span>${safeText(v.name)} offers ${safeText(v.label)}</span><button class="sbtn sg" data-swap-accept="${safeText(o.id)}" data-volunteer="${safeText(v.name)}">Accept exchange</button></div>`).join('');
-    return `<form class="staffVolunteerForm mrow" data-offer-id="${safeText(o.id)}"><span><strong>${safeText(o.staff)}</strong> offers ${safeText(o.dateStr)} ${safeText(o.s)}–${safeText(o.e)}</span><label>My shift to exchange <select name="shift" required>${ownOpts}</select></label><button class="sbtn sg" ${!mine.length?'disabled':''}>Propose exchange</button></form>`;
+    return `<form class="staffVolunteerForm mrow" data-offer-id="${safeText(o.id)}"><span><strong>${safeText(o.staff)}</strong> offers ${safeText(o.dateStr)} ${safeText(o.s)}–${safeText(o.e)}</span><label>My shift to exchange <select name="shift" required>${ownOpts}</select></label><button class="sbtn sg" ${!eligibleMine.length?'disabled':''}>Propose exchange</button></form>`;
   }).join(''):'No open swap offers.'}</div>`;
-  content+=`<div class="admin-report-section"><h3>Request leave</h3><form id="staffLeaveForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Leave type</label><select name="kind"><option value="annual">Paid annual leave</option><option value="unpaid">Unpaid leave</option></select></div><button class="auth-btn" ${!mine.length?'disabled':''}>Submit leave request</button></form><p style="font-size:11px;margin-top:8px">One shift per request. Paid leave requires enough remaining allowance. All requests require administrator approval.</p></div>`;
+  content+=`<div class="admin-report-section"><h3>Request leave</h3><form id="staffLeaveForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Leave type</label><select name="kind"><option value="annual">Paid annual leave</option><option value="unpaid">Unpaid leave</option></select></div><button class="auth-btn" ${!eligibleMine.length?'disabled':''}>Submit leave request</button></form><p style="font-size:11px;margin-top:8px">One shift per request. Paid leave requires enough remaining allowance. All requests require administrator approval.</p></div>`;
   const leave=[...(h.req||[]).map(r=>({...r,kind:'annual'})),...(h.upd||[]).map(r=>({...r,kind:'unpaid'}))];
   content+=`<div class="admin-report-section staff-leave-requests"><h3>My leave requests</h3>${leave.length?leave.map(r=>`<div class="mrow"><span>${safeText(r.kind)} · ${safeText(r.date)} · ${safeText(reportN(r.hours).toFixed(1))}h · ${safeText(r.status)}</span>${r.status==='pending'?`<button class="sbtn sr" data-leave-cancel="${safeText(r.id)}" data-leave-kind="${safeText(r.kind)}">Cancel</button>`:''}</div>`).join(''):'No recorded requests.'}</div>`;
   staffEl('staffDashboardContent').innerHTML=content;
@@ -1143,7 +1194,16 @@ staffEl('changePinForm').addEventListener('submit',async ev=>{
 function chosenShift(value){const [date,index]=String(value).split('|');return staffOpt(date,index);}
 staffEl('staffDashboardContent').addEventListener('submit',ev=>{
   ev.preventDefault();const f=ev.target,shift=chosenShift(new FormData(f).get('shift'));
-  if(f.id==='staffSwapOfferForm')staffDo('offer_swap',{...shift,target_staff:String(new FormData(f).get('target_staff')||'')});
+  if(f.id==='staffSwapOfferForm'){
+    const button=f.querySelector('button[type="submit"],button.auth-btn');
+    if(!/^20\d{2}-\d{2}-\d{2}$/.test(shift.date)||!Number.isInteger(shift.base_index)){
+      staffMsg('staffSwapOfferFeedback','Please select a valid future shift.');return;
+    }
+    if(button){button.disabled=true;button.textContent='Offering…';}
+    staffDo('offer_swap',{...shift,target_staff:String(new FormData(f).get('target_staff')||'')},'staffSwapOfferFeedback')
+      .then(ok=>{if(!ok){const note=staffEl('staffFeedback');if(note)note.scrollIntoView({block:'center',behavior:'smooth'});}})
+      .finally(()=>{if(button.isConnected){button.disabled=false;button.textContent='Offer shift for exchange';}});
+  }
   else if(f.id==='staffLeaveForm')staffDo('request_leave',{...shift,kind:new FormData(f).get('kind')});
   else if(f.matches('.staffVolunteerForm'))staffDo('volunteer_swap',{...shift,offer_id:f.dataset.offerId});
 });
@@ -1169,7 +1229,22 @@ staffEl('shiftDetails').addEventListener('click',ev=>{
   if(operation==='request_leave'&&!confirm('Submit this leave request for administrator approval?'))return;
   const payload={date:wrap.dataset.date,base_index:Number(wrap.dataset.baseIndex)};
   if(operation==='request_leave')payload.kind=b.dataset.leaveType;
-  closeShift();staffSetView(true);staffDo(operation,payload);
+  closeShift();staffSetView(true);
+  if(operation==='offer_swap'){
+    // Shift-detail Offer Swap opens the editable offer form with that shift selected.
+    staffFetchDashboard().then(()=>{
+      const form=staffEl('staffSwapOfferForm');
+      const select=form?.querySelector('select[name="shift"]');
+      if(select){
+        const value=payload.date+'|'+payload.base_index;
+        if(Array.from(select.options).some(o=>o.value===value))select.value=value;
+        else staffMsg('staffFeedback','This shift is not eligible for a swap offer.');
+      }
+      staffJumpTo('staffSwapOfferSection');
+    });
+    return;
+  }
+  staffDo(operation,payload);
 });
 // Refresh staff selections once the public schedule has loaded.
 const _originalLoadSchedule=loadSchedule;
