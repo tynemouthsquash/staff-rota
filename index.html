@@ -201,6 +201,24 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 .staff-stat-detail{font-size:10px;color:var(--text2)}
 .staff-notice{background:var(--gbg);border:1px solid var(--gbrd);border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:7px}
 .staff-notice strong{color:var(--navy)}
+
+/* v15.32.1 compact administrator week controls */
+.admin-week-toolbar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin:11px 0 12px;padding:9px 11px;background:var(--surf2);border:1px solid var(--border);border-radius:9px}
+.admin-week-buttons{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.admin-week-title{font-size:12px;font-weight:800;color:var(--navy)}
+.admin-week-toolbar input[type=date]{font:inherit;font-size:11px;max-width:155px;padding:5px;border:1px solid var(--border);border-radius:5px;background:#fff}
+.admin-controls-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:5px 12px}
+.admin-controls-grid .admin-edit-shift{display:grid;grid-template-columns:76px minmax(95px,1fr) 77px 77px auto;align-items:end;gap:5px;padding:6px 7px;background:#fff;border:1px solid var(--border);border-radius:6px;min-width:0}
+.admin-controls-grid .admin-edit-shift strong{font-size:10px;align-self:center}
+.admin-controls-grid .admin-edit-shift label{min-width:0;font-size:9px;gap:2px}
+.admin-controls-grid .admin-edit-shift select,.admin-controls-grid .admin-edit-shift input{width:100%;min-width:0;max-width:none;padding:5px 3px;font-size:10px}
+.admin-controls-grid .admin-edit-shift .auth-btn{padding:6px 8px;white-space:nowrap;font-size:10px}
+.admin-exchange-card{background:#fff;border:1px solid var(--border);border-radius:7px;padding:9px 10px;margin:5px 0 12px}
+.admin-exchange-card .admin-edit-shift{padding:4px 0;border:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:8px}
+.admin-exchange-card .admin-edit-shift select{max-width:none;width:100%;min-width:0}
+.admin-exchange-card .admin-edit-note{padding:4px 0 0}
+@media(max-width:600px){.admin-controls-grid{grid-template-columns:1fr}.admin-controls-grid .admin-edit-shift{grid-template-columns:65px minmax(80px,1fr) 65px 65px auto;gap:3px;padding:5px 4px}.admin-exchange-card .admin-edit-shift{grid-template-columns:1fr}.admin-week-toolbar{justify-content:center;text-align:center}}
+
 </style>
 <style>
   .preview-flag{font-size:11px;font-weight:700;color:#0a1e3d;background:#f0c060;padding:7px 10px;border-radius:6px}
@@ -695,13 +713,14 @@ async function loadAdminReport(){
   }catch(_error){status.textContent='Unable to load the administrator report. Please retry.';}
 }
 
+let adminControlsWs=weekStart(today);
 function adminEditDate(day){return `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;}
 function adminEditPanel(){
   const controls=[];
   const staffOptions=(value)=>`<option value="">Unassigned / cover needed</option>`+
     STAFF.map(person=>`<option value="${safeText(person.name)}" ${person.name===value?'selected':''}>${safeText(person.name)}</option>`).join('');
   for(let i=0;i<7;i++){
-    const day=new Date(ws);day.setDate(day.getDate()+i);
+    const day=new Date(adminControlsWs);day.setDate(day.getDate()+i);
     const di=day.getDay()===0?6:day.getDay()-1;
     const key=dateKey(day,di);
     if(adminReportData?.dOv?.[key]){
@@ -727,17 +746,18 @@ function adminEditPanel(){
   }
   const exchangeSlots=[];
   for(let i=0;i<7;i++){
-    const day=new Date(ws);day.setDate(day.getDate()+i);
+    const day=new Date(adminControlsWs);day.setDate(day.getDate()+i);
     const di=day.getDay()===0?6:day.getDay()-1;
     if(adminReportData?.dOv?.[dateKey(day,di)])continue;
     for(const sh of shiftsForDate(day)){
-      if(sh.origIdx<0||!sh.staff||sh.staff==='(unassigned)'||['hol','unpaid','sick','cover','unavailable'].includes(sh.type))continue;
+      if(day<today||sh.origIdx<0||!sh.staff||sh.staff==='(unassigned)'||['hol','unpaid','sick','cover','unavailable'].includes(sh.type))continue;
       const v=adminEditDate(day)+'|'+sh.origIdx;
       exchangeSlots.push(`<option value="${safeText(v)}">${safeText(day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))} · ${safeText(sh.staff)} · ${safeText(sh.s||sh.start)}–${safeText(sh.e||sh.end)}</option>`);
     }
   }
-  const exchangeForm=`<h4 style="margin:14px 0 8px">Exchange two shifts without staff approval</h4><form id="adminExchangeForm" class="admin-edit-shift"><label>First shift<select name="first" required>${exchangeSlots.join('')}</select></label><label>Second shift<select name="second" required>${exchangeSlots.join('')}</select></label><button class="auth-btn" type="submit" ${exchangeSlots.length<2?'disabled':''}>Exchange shifts</button></form><p class="admin-edit-note">Administrator-only. Works on eligible shifts in the selected week. Conflicting open swap offers or leave entries are rejected.</p>`;
-  return `<div class="admin-report-section"><h3>Administrator controls — v15.32</h3><p class="admin-report-notice">Administrator-only reassignment, direct shift exchanges and annual/unpaid leave decisions are saved securely and audited. Leave and sickness entries cannot be reassigned through the shift editor.</p><p id="adminEditFeedback" role="status" aria-live="polite"></p><h4>Pending leave decisions</h4>${pending.join('')||'<p>No pending leave decisions.</p>'}${exchangeForm}<h4 style="margin-top:14px">Edit shifts · ${safeText(weekLabel(ws))}</h4>${controls.join('')||'<p>No eligible shifts this week.</p>'}</div>`;
+  const exchangeForm=`<div class="admin-exchange-card"><h4 style="margin:0 0 5px">Exchange two shifts</h4><form id="adminExchangeForm" class="admin-edit-shift"><label>First shift<select name="first" required>${exchangeSlots.join('')}</select></label><label>Second shift<select name="second" required>${exchangeSlots.join('')}</select></label><button class="auth-btn" type="submit" ${exchangeSlots.length<2?'disabled':''}>Exchange shifts</button></form><p class="admin-edit-note">Administrator-only. Works on eligible shifts in the selected week. Conflicting open swap offers or leave entries are rejected. Past-dated exchanges are not permitted; use the shift editor to correct previous weeks.</p></div>`;
+  const navigator=`<div class="admin-week-toolbar"><div class="admin-week-title">Editing week: ${safeText(weekLabel(adminControlsWs))}</div><div class="admin-week-buttons"><button type="button" class="nb" data-admin-week="-1" aria-label="Previous editing week">&#8592; Previous</button><button type="button" class="nb" data-admin-week="0">This week</button><button type="button" class="nb" data-admin-week="1" aria-label="Next editing week">Next &#8594;</button><label style="font-size:10px">Jump to date <input type="date" id="adminWeekJump" value="${adminEditDate(adminControlsWs)}" aria-label="Jump to an editing week"></label></div></div>`;
+  return `<div class="admin-report-section"><h3>Administrator controls</h3><p class="admin-report-notice">Administrator edits are securely saved and audited. Previous weeks may be corrected through the shift editor. Direct exchanges are available for eligible future shifts only.</p><p id="adminEditFeedback" role="status" aria-live="polite"></p><h4>Pending leave decisions</h4>${pending.join('')||'<p>No pending leave decisions.</p>'}${navigator}${exchangeForm}<h4 style="margin:8px 0">Edit shifts · ${safeText(weekLabel(adminControlsWs))}</h4><div class="admin-controls-grid">${controls.join('')||'<p>No eligible shifts this week.</p>'}</div></div>`;
 }
 let adminEditBusy=false;
 async function submitAdminEdit(operation,payload){
@@ -778,10 +798,30 @@ authElement('adminReportContent').addEventListener('submit',event=>{
   submitAdminEdit('edit_shift',payload);
 });
 authElement('adminReportContent').addEventListener('click',event=>{
+  const nav=event.target.closest('button[data-admin-week]');
+  if(nav){
+    const delta=Number(nav.dataset.adminWeek);
+    if(delta===0){adminControlsWs=weekStart(today);}
+    else if(Number.isInteger(delta)&&Math.abs(delta)===1){
+      const next=new Date(adminControlsWs);next.setDate(next.getDate()+delta*7);
+      if(next.getFullYear()<2020||next.getFullYear()>2099)return;
+      adminControlsWs=next;
+    }
+    renderAdminReport();
+    return;
+  }
   const btn=event.target.closest('button[data-leave-decision]');if(!btn)return;
   const payload={staff:btn.dataset.leaveName,kind:btn.dataset.leaveKind,request_id:btn.dataset.leaveId,decision:btn.dataset.leaveDecision};
   if(!confirm(`${payload.decision==='approved'?'Approve':'Decline'} this ${payload.kind} leave request for ${payload.staff}?`))return;
   submitAdminEdit('resolve_leave',payload);
+});
+
+authElement('adminReportContent').addEventListener('change',event=>{
+  if(event.target?.id!=='adminWeekJump')return;
+  const date=parseDate(String(event.target.value||''));
+  if(!date||Number.isNaN(date.getTime())||date.getFullYear()<2020||date.getFullYear()>2099)return;
+  adminControlsWs=weekStart(date);
+  renderAdminReport();
 });
 
 authElement('weeklyRotaTabBtn').addEventListener('click',()=>{reportShow(false);staffSetView(false);drawWeek();});
