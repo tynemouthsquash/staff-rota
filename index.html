@@ -192,6 +192,15 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 .admin-leave-item>div:last-child{white-space:nowrap}
 .admin-edit-note{font-size:11px;color:var(--amb);padding:8px 0}
 #adminEditFeedback{font-size:11px;color:var(--navy2);font-weight:700;margin:8px 0}
+
+/* v15.32 personalised account snapshot */
+.staff-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 16px}
+.staff-stat{background:#fff;border:1px solid var(--border);border-top:3px solid var(--gold);border-radius:9px;padding:14px}
+.staff-stat-label{font-size:10px;letter-spacing:.4px;color:var(--muted);font-weight:700;text-transform:uppercase}
+.staff-stat-number{font-size:23px;font-weight:800;margin:7px 0 3px;color:var(--navy)}
+.staff-stat-detail{font-size:10px;color:var(--text2)}
+.staff-notice{background:var(--gbg);border:1px solid var(--gbrd);border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:7px}
+.staff-notice strong{color:var(--navy)}
 </style>
 <style>
   .preview-flag{font-size:11px;font-weight:700;color:#0a1e3d;background:#f0c060;padding:7px 10px;border-radius:6px}
@@ -243,13 +252,22 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 .admin-leave-item>div:last-child{white-space:nowrap}
 .admin-edit-note{font-size:11px;color:var(--amb);padding:8px 0}
 #adminEditFeedback{font-size:11px;color:var(--navy2);font-weight:700;margin:8px 0}
+
+/* v15.32 personalised account snapshot */
+.staff-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:0 0 16px}
+.staff-stat{background:#fff;border:1px solid var(--border);border-top:3px solid var(--gold);border-radius:9px;padding:14px}
+.staff-stat-label{font-size:10px;letter-spacing:.4px;color:var(--muted);font-weight:700;text-transform:uppercase}
+.staff-stat-number{font-size:23px;font-weight:800;margin:7px 0 3px;color:var(--navy)}
+.staff-stat-detail{font-size:10px;color:var(--text2)}
+.staff-notice{background:var(--gbg);border:1px solid var(--gbrd);border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:7px}
+.staff-notice strong{color:var(--navy)}
 </style>
 </head>
 <body>
 <div class="app" id="app">
   <div class="topbar">
     <div><div class="logo-main">Tynemouth Squash</div><div class="logo-sub">Staff Rota</div></div>
-    <div class="topbar-right admin-actions"><button type="button" class="login-btn" id="staffOpenBtn">Staff Login</button><button type="button" class="login-btn auth-hidden" id="staffAccountBtn">My Account</button><button type="button" class="login-btn" id="adminOpenBtn">Administrator</button><button type="button" class="login-btn auth-hidden" id="adminLogoutBtn">Sign out</button></div>
+    <div class="topbar-right admin-actions"><button type="button" class="login-btn" id="staffOpenBtn">Staff Login</button><button type="button" class="login-btn auth-hidden" id="staffAlertsBtn" aria-label="Open staff notifications">Notifications <span id="staffAlertsCount">0</span></button><button type="button" class="login-btn auth-hidden" id="staffAccountBtn">My Account</button><button type="button" class="login-btn" id="adminOpenBtn">Administrator</button><button type="button" class="login-btn auth-hidden" id="adminLogoutBtn">Sign out</button></div>
   </div>
   <div class="tabs-row">
     <div class="tabs" role="tablist" aria-label="Rota sections"><button class="tab active" id="weeklyRotaTabBtn" type="button" role="tab" aria-selected="true" aria-controls="rv">Weekly Rota</button><button class="tab auth-hidden" id="adminReportTabBtn" type="button" role="tab" aria-selected="false" aria-controls="adminReportPanel">Admin Report</button></div>
@@ -266,7 +284,7 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
     <button class="auth-btn" id="adminChangePinBtn" type="button" style="max-width:180px">Change PIN</button><button class="auth-btn" id="adminPanelLogoutBtn" type="button" style="max-width:180px">Sign out</button>
   </section>
   <section id="adminReportPanel" class="auth-hidden" aria-label="Private administrator report">
-    <div class="admin-report-head"><div><h2>Administrator Report</h2><p>Private payroll, leave and requests · Friday–Thursday payroll weeks · Scoped admin changes</p></div><div class="admin-report-actions"><button class="nb" id="adminReportRefreshBtn" type="button">Refresh</button><button class="nb" id="adminReportPrintBtn" type="button">Print</button><button class="nb" id="adminReportBackBtn" type="button">Back to rota</button></div></div>
+    <div class="admin-report-head"><div><h2>Administrator Report</h2><p>Private payroll, leave and requests · Friday–Thursday payroll weeks · Scoped admin changes</p></div><div class="admin-report-actions"><button class="nb" id="adminReportPinBtn" type="button">Change Administrator PIN</button><button class="nb" id="adminReportRefreshBtn" type="button">Refresh</button><button class="nb" id="adminReportPrintBtn" type="button">Print</button><button class="nb" id="adminReportBackBtn" type="button">Back to rota</button></div></div>
     <p id="adminReportStatus" role="status" aria-live="polite" class="ibx">Sign in to view private administrator data.</p>
     <div id="adminReportContent"></div>
   </section>
@@ -381,8 +399,9 @@ function shiftsForDate(date){
     return {...b,staff:effectiveBaseStaff(bi,date),start:b.s,end:b.e,id,day:di,origIdx:bi,...(sOv[id]||{})};
   });
 }
-function isUnavailable(shift){return !shift.staff||shift.staff==='(unassigned)'||['cover','unavailable'].includes(shift.type);}
+function isUnavailable(shift){return shift.type!=='restricted'&&(!shift.staff||shift.staff==='(unassigned)'||['cover','unavailable'].includes(shift.type));}
 function shiftCategory(shift){
+  if(shift.type==='restricted')return ['smd','Manager-managed'];
   if(isUnavailable(shift))return ['scv','Cover needed'];
   if(shift.type==='covered')return ['scd','Covered'];
   if(shift.type==='swapped')return ['ssw','Swapped'];
@@ -416,7 +435,7 @@ function drawWeek(){
       const s=shifts[index];const start=shiftTime(s.s||s.start);let end=shiftTime(s.e||s.end);if(end<start)end+=24;
       const top=((start-min)/span)*height;const blockHeight=Math.max(((end-start)/span)*height-2,22);
       const [klass,tag]=shiftCategory(s);
-      const displayName=isUnavailable(s)?'Cover needed':(s.staff||'Unassigned');
+      const displayName=s.type==='restricted'?'Manager-managed':(isUnavailable(s)?'Cover needed':(s.staff||'Unassigned'));
       const uniqueId=`${day}_${index}`;
       shiftDetails.set(uniqueId,{...s,_displayDate:new Date(date)});
       html+=`<button type="button" class="sb ${klass}" data-shift="${uniqueId}" style="top:${top.toFixed(1)}px;height:${blockHeight.toFixed(1)}px;text-align:left;font-family:inherit;width:calc(100% - 2px)" aria-label="${safeText(displayName)} shift"><div class="sname">${safeText(displayName)}</div>${blockHeight>35?`<div class="stime">${safeText(formatTime(s.s||s.start))}–${safeText(formatTime(s.e||s.end))}</div>`:''}${blockHeight>52&&tag?`<span class="stag ${klass==='scd'?'tcd':klass==='ssw'?'tw':klass==='smd'?'tm':'tc'}">${safeText(tag)}</span>`:''}</button>`;
@@ -428,10 +447,10 @@ function drawWeek(){
 function openShift(s){
   const date=s._displayDate;
   const [klass,tag]=shiftCategory(s);
-  const name=isUnavailable(s)?'Cover needed':(s.staff||'Unassigned');
+  const name=s.type==='restricted'?'Manager-managed':(isUnavailable(s)?'Cover needed':(s.staff||'Unassigned'));
   const start=s.s||s.start,end=s.e||s.end;
   const st=shiftTime(start),et=shiftTime(end);const duration=((et<st?et+24:et)-st).toFixed(2);
-  document.getElementById('shiftDetails').innerHTML=`<div class="mrow"><span class="mlbl">Date</span><span class="mval">${safeText(date.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}</span></div><div class="mrow"><span class="mlbl">Staff</span><span class="mval">${safeText(name)}</span></div><div class="mrow"><span class="mlbl">Shift</span><span class="mval">${safeText(formatTime(start))}–${safeText(formatTime(end))}</span></div><div class="mrow"><span class="mlbl">Duration</span><span class="mval">${safeText(duration)} hours</span></div>${tag?`<div class="mrow"><span class="mlbl">Status</span><span class="mval">${safeText(tag)}</span></div>`:''}<div class="ibx" style="margin-top:12px">Read-only preview. Shift changes will return when secure staff authentication is complete.</div>`;
+  document.getElementById('shiftDetails').innerHTML=`<div class="mrow"><span class="mlbl">Date</span><span class="mval">${safeText(date.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}</span></div><div class="mrow"><span class="mlbl">Staff</span><span class="mval">${safeText(name)}</span></div><div class="mrow"><span class="mlbl">Shift</span><span class="mval">${safeText(formatTime(start))}–${safeText(formatTime(end))}</span></div><div class="mrow"><span class="mlbl">Duration</span><span class="mval">${safeText(duration)} hours</span></div>${tag?`<div class="mrow"><span class="mlbl">Status</span><span class="mval">${safeText(tag)}</span></div>`:''}<div class="ibx" style="margin-top:12px">Sign in to see authorised shift actions. Manager-managed shifts cannot be claimed directly.</div>`;
   if(staffSessionToken && !adminSessionToken) staffShiftActions(s);
   document.getElementById('shiftOverlay').classList.add('open');
 }
@@ -706,7 +725,19 @@ function adminEditPanel(){
       }
     }
   }
-  return `<div class="admin-report-section"><h3>Administrator controls — Update 2</h3><p class="admin-report-notice">Only individual shift assignments/times and pending annual/unpaid leave decisions are enabled in this update. Changes are saved to Supabase and audited. Custom-structure days, holiday/sick shifts, staff management and bulk resets remain locked.</p><p id="adminEditFeedback" role="status" aria-live="polite"></p><h4>Pending leave decisions</h4>${pending.join('')||'<p>No pending leave decisions.</p>'}<h4 style="margin-top:14px">Edit shifts · ${safeText(weekLabel(ws))}</h4>${controls.join('')||'<p>No eligible shifts this week.</p>'}</div>`;
+  const exchangeSlots=[];
+  for(let i=0;i<7;i++){
+    const day=new Date(ws);day.setDate(day.getDate()+i);
+    const di=day.getDay()===0?6:day.getDay()-1;
+    if(adminReportData?.dOv?.[dateKey(day,di)])continue;
+    for(const sh of shiftsForDate(day)){
+      if(sh.origIdx<0||!sh.staff||sh.staff==='(unassigned)'||['hol','unpaid','sick','cover','unavailable'].includes(sh.type))continue;
+      const v=adminEditDate(day)+'|'+sh.origIdx;
+      exchangeSlots.push(`<option value="${safeText(v)}">${safeText(day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))} · ${safeText(sh.staff)} · ${safeText(sh.s||sh.start)}–${safeText(sh.e||sh.end)}</option>`);
+    }
+  }
+  const exchangeForm=`<h4 style="margin:14px 0 8px">Exchange two shifts without staff approval</h4><form id="adminExchangeForm" class="admin-edit-shift"><label>First shift<select name="first" required>${exchangeSlots.join('')}</select></label><label>Second shift<select name="second" required>${exchangeSlots.join('')}</select></label><button class="auth-btn" type="submit" ${exchangeSlots.length<2?'disabled':''}>Exchange shifts</button></form><p class="admin-edit-note">Administrator-only. Works on eligible shifts in the selected week. Conflicting open swap offers or leave entries are rejected.</p>`;
+  return `<div class="admin-report-section"><h3>Administrator controls — v15.32</h3><p class="admin-report-notice">Administrator-only reassignment, direct shift exchanges and annual/unpaid leave decisions are saved securely and audited. Leave and sickness entries cannot be reassigned through the shift editor.</p><p id="adminEditFeedback" role="status" aria-live="polite"></p><h4>Pending leave decisions</h4>${pending.join('')||'<p>No pending leave decisions.</p>'}${exchangeForm}<h4 style="margin-top:14px">Edit shifts · ${safeText(weekLabel(ws))}</h4>${controls.join('')||'<p>No eligible shifts this week.</p>'}</div>`;
 }
 let adminEditBusy=false;
 async function submitAdminEdit(operation,payload){
@@ -728,6 +759,16 @@ async function submitAdminEdit(operation,payload){
   finally{adminEditBusy=false;}
 }
 authElement('adminReportContent').addEventListener('submit',event=>{
+  const exchange=event.target.closest('#adminExchangeForm');
+  if(exchange){
+    event.preventDefault();const values=new FormData(exchange);
+    const [dateA,indexA]=String(values.get('first')||'').split('|');
+    const [dateB,indexB]=String(values.get('second')||'').split('|');
+    if(dateA===dateB&&indexA===indexB){alert('Choose two different shifts.');return;}
+    if(!confirm('Exchange the staff assigned to these two shifts? This changes the live rota immediately.'))return;
+    submitAdminEdit('exchange_shifts',{first:{date:dateA,base_index:Number(indexA)},second:{date:dateB,base_index:Number(indexB)}});
+    return;
+  }
   const form=event.target.closest('form[data-edit-date]');if(!form)return;
   event.preventDefault();
   const values=new FormData(form);
@@ -839,6 +880,7 @@ function staffInitNames(){
 function staffLoginUI(){
   staffEl('staffOpenBtn').classList.toggle('auth-hidden',!!staffSessionToken);
   staffEl('staffAccountBtn').classList.toggle('auth-hidden',!staffSessionToken);
+  staffEl('staffAlertsBtn').classList.toggle('auth-hidden',!staffSessionToken);
   staffEl('adminOpenBtn').classList.toggle('auth-hidden',!!staffSessionToken || !!adminSessionToken);
 }
 function staffSetView(visible){
@@ -859,8 +901,12 @@ async function staffFetchDashboard(){
 }
 function staffShiftList(){
   const rows=[];
-  for(let i=0;i<14;i++){
-    const date=new Date(today);date.setDate(date.getDate()+i);
+  const horizon=new Date(today);horizon.setMonth(horizon.getMonth()+3);
+  for(let i=0;i<100;i++){
+    const date=new Date(today);
+    date.setDate(today.getDate()+i);
+    if(date>horizon)break;
+    // The old next-14-days filter prevented viewing future swap opportunities.
     const di=date.getDay()===0?6:date.getDay()-1;
     if(dOv[dateKey(date,di)])continue;
     for(const s of shiftsForDate(date)){
@@ -886,28 +932,62 @@ async function staffDo(operation,payload){
 function staffRenderDashboard(){
   if(!staffSessionToken||!staffDashboardData)return;
   staffEl('staffDashboardHeading').textContent=`My Account — ${staffSessionName}`;
-  const shifts=staffShiftList(),mine=shifts.filter(x=>x.staff===staffSessionName),available=shifts.filter(x=>x.staff!==staffSessionName && (!x.staff||x.staff==='(unassigned)'||['hol','unpaid','sick','unavailable','cover'].includes(x.type)));
+  const shifts=staffShiftList(),mine=shifts.filter(x=>x.staff===staffSessionName),available=shifts.filter(x=>x.staff!==staffSessionName && (x.type!=='restricted'&&(!x.staff||x.staff==='(unassigned)'||['unavailable','cover'].includes(x.type))));
   const ownOpts=mine.map(x=>`<option value="${safeText(x.date+'|'+x.base_index)}">${safeText(x.text)}</option>`).join('');
   const openOpts=available.map(x=>`<option value="${safeText(x.date+'|'+x.base_index)}">${safeText(x.text)} (${safeText(x.type||'Vacant')})</option>`).join('');
   const offers=staffDashboardData.offers||[],h=staffDashboardData.hol||{};
-  const myOffers=offers.filter(o=>o.staff===staffSessionName),otherOffers=offers.filter(o=>o.staff!==staffSessionName);
-  let content=`<div class="admin-report-section"><h3>My upcoming shifts</h3>${mine.length?mine.map(x=>`<div class="mrow"><span>${safeText(x.text)}</span><span>${safeText(x.type||'Scheduled')}</span></div>`).join(''):'No shifts in the next 14 days.'}</div>`;
-  content+=`<div class="admin-report-section"><h3>Shift cover</h3><form id="staffClaimForm"><div class="auth-field"><label>Available shift (next 14 days)</label><select name="shift" required>${openOpts}</select></div><button class="auth-btn" ${!available.length?'disabled':''}>Claim this shift</button></form></div>`;
-  content+=`<div class="admin-report-section"><h3>Offer a shift swap</h3><form id="staffSwapOfferForm"><div class="auth-field"><label>My shift (next 14 days)</label><select name="shift" required>${ownOpts}</select></div><button class="auth-btn" ${!mine.length?'disabled':''}>Offer shift for exchange</button></form></div>`;
+  const myOffers=offers.filter(o=>o.staff===staffSessionName),otherOffers=offers.filter(o=>o.staff!==staffSessionName&&o.dateStr>=adminEditDate(today));
+  // Snapshot figures are calculated from published assignments, not attendance records.
+  // The private leave balance comes only from the authenticated staff-dashboard endpoint.
+  const dateAt=(d,delta=0)=>{const v=new Date(d);v.setDate(v.getDate()+delta);return v;};
+  const weekBegin=weekStart(today), priorWeek=dateAt(weekBegin,-7);
+  function scheduledHours(start){
+    let hrs=0,shifts=0;
+    for(let k=0;k<7;k++){
+      const day=dateAt(start,k);
+      for(const sh of shiftsForDate(day)){
+        if(sh.staff!==staffSessionName||['hol','unpaid','sick','cover','unavailable'].includes(sh.type))continue;
+        hrs+=reportHrs(sh.s||sh.start,sh.e||sh.end);shifts++;
+      }
+    }
+    return {hrs:hrs.toFixed(1),shifts};
+  }
+  const current=scheduledHours(weekBegin), last=scheduledHours(priorWeek);
+  mine.sort((a,b)=>a.date.localeCompare(b.date));
+  const next=mine[0]||null;
+  const entitlement=(BASE.filter(b=>b.staff===staffSessionName).reduce((n,b)=>{
+    const t=shiftTime(b.e)-shiftTime(b.s);return n+(t>=0?t:t+24);
+  },0)*4)+reportN(h.contractProrata)+reportN(h.adjBaked)+reportN(h.adj);
+  const holidayLeft=Math.max(0,entitlement-reportN(h.taken));
+  const notices=[];
+  if(available.length)notices.push(`<div class="staff-notice"><strong>${available.length} cover shift${available.length===1?'':'s'} available</strong> — see Shift cover below.</div>`);
+  if(otherOffers.length)notices.push(`<div class="staff-notice"><strong>${otherOffers.length} shift swap offer${otherOffers.length===1?'':'s'}</strong> — choose a shift you can exchange below.</div>`);
+  const pendingVols=myOffers.reduce((n,o)=>n+(Array.isArray(o.vols)?o.vols.length:0),0);
+  if(pendingVols)notices.push(`<div class="staff-notice"><strong>${pendingVols} colleague response${pendingVols===1?'':'s'} to your swap offers</strong> — review them below.</div>`);
+  const pendingLeave=[...(h.req||[]),...(h.upd||[])].filter(x=>x.status==='pending').length;
+  if(pendingLeave)notices.push(`<div class="staff-notice"><strong>${pendingLeave} leave request${pendingLeave===1?'':'s'} awaiting approval</strong>.</div>`);
+  staffEl('staffAlertsCount').textContent=String(available.length+otherOffers.length+pendingVols+pendingLeave);
+  const stat=(label,value,detail)=>`<div class="staff-stat"><div class="staff-stat-label">${safeText(label)}</div><div class="staff-stat-number">${safeText(value)}</div><div class="staff-stat-detail">${safeText(detail)}</div></div>`;
+  let content=`<div class="staff-stats">${stat('This week',current.hrs+' hrs',current.shifts+' scheduled shifts')}${stat('Last week',last.hrs+' hrs','Scheduled, not confirmed worked')}${stat('Holiday remaining',holidayLeft.toFixed(1)+' hrs','Indicative; confirm with admin')}${stat('Next shift',next?next.text.split(' ').slice(0,3).join(' '):'None',next?next.text:'No scheduled upcoming shift')}</div>`;
+  content+=`<div class="admin-report-section"><h3>Notifications & upcoming activity</h3>${notices.join('')||'<p>No new shift offers or outstanding requests.</p>'}</div>`;
+  content+=`<div class="admin-report-section"><h3>My upcoming shifts</h3>${mine.length?mine.slice(0,35).map(x=>`<div class="mrow"><span>${safeText(x.text)}</span><span>${safeText(x.type||'Scheduled')}</span></div>`).join(''):'No shifts in the next three months.'}</div>`;
+  content+=`<div class="admin-report-section"><h3>Shift cover</h3><form id="staffClaimForm"><div class="auth-field"><label>Available shift (next three months)</label><select name="shift" required>${openOpts}</select></div><button class="auth-btn" ${!available.length?'disabled':''}>Claim this shift</button></form></div>`;
+  const colleagueOptions=STAFF.filter(s=>s.name!==staffSessionName).map(s=>`<option value="${safeText(s.name)}">${safeText(s.name)}</option>`).join('');
+  content+=`<div class="admin-report-section"><h3>Offer a shift swap</h3><form id="staffSwapOfferForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Who should see this offer?</label><select name="target_staff"><option value="">All colleagues</option>${colleagueOptions}</select></div><button class="auth-btn" ${!mine.length?'disabled':''}>Offer shift for exchange</button></form><p class="admin-edit-note">If you choose a colleague, only they can respond. They must offer one of their own available shifts for you to approve.</p></div>`;
   content+=`<div class="admin-report-section"><h3>Swap offers</h3>${offers.length?offers.map(o=>{
-    const title=safeText(`${o.staff}: ${o.dateStr} ${o.s}–${o.e}`);
+    const title=safeText(`${o.staff}: ${o.dateStr} ${o.s}–${o.e}${o.target_staff?' · offered to '+o.target_staff:''}`);
     if(o.staff===staffSessionName)return `<div class="mrow"><span>${title} · ${o.vols.length} volunteers</span><button class="sbtn sr" data-swap-cancel="${safeText(o.id)}">Cancel</button></div>`+
       o.vols.map(v=>`<div class="mrow"><span>${safeText(v.name)} offers ${safeText(v.label)}</span><button class="sbtn sg" data-swap-accept="${safeText(o.id)}" data-volunteer="${safeText(v.name)}">Accept exchange</button></div>`).join('');
-    return `<form class="staffVolunteerForm mrow" data-offer-id="${safeText(o.id)}"><span>${title}</span><select name="shift" required>${ownOpts}</select><button class="sbtn sg" ${!mine.length?'disabled':''}>Offer my shift</button></form>`;
+    return `<form class="staffVolunteerForm mrow" data-offer-id="${safeText(o.id)}"><span><strong>${safeText(o.staff)}</strong> offers ${safeText(o.dateStr)} ${safeText(o.s)}–${safeText(o.e)}</span><label>My shift to exchange <select name="shift" required>${ownOpts}</select></label><button class="sbtn sg" ${!mine.length?'disabled':''}>Propose exchange</button></form>`;
   }).join(''):'No open swap offers.'}</div>`;
-  content+=`<div class="admin-report-section"><h3>Request leave</h3><form id="staffLeaveForm"><div class="auth-field"><label>My shift (next 14 days)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Leave type</label><select name="kind"><option value="annual">Paid annual leave</option><option value="unpaid">Unpaid leave</option></select></div><button class="auth-btn" ${!mine.length?'disabled':''}>Submit leave request</button></form><p style="font-size:11px;margin-top:8px">One shift per request. Paid leave requires enough remaining allowance. All requests require administrator approval.</p></div>`;
+  content+=`<div class="admin-report-section"><h3>Request leave</h3><form id="staffLeaveForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Leave type</label><select name="kind"><option value="annual">Paid annual leave</option><option value="unpaid">Unpaid leave</option></select></div><button class="auth-btn" ${!mine.length?'disabled':''}>Submit leave request</button></form><p style="font-size:11px;margin-top:8px">One shift per request. Paid leave requires enough remaining allowance. All requests require administrator approval.</p></div>`;
   const leave=[...(h.req||[]).map(r=>({...r,kind:'annual'})),...(h.upd||[]).map(r=>({...r,kind:'unpaid'}))];
   content+=`<div class="admin-report-section"><h3>My leave requests</h3>${leave.length?leave.map(r=>`<div class="mrow"><span>${safeText(r.kind)} · ${safeText(r.date)} · ${safeText(r.hours)}h · ${safeText(r.status)}</span>${r.status==='pending'?`<button class="sbtn sr" data-leave-cancel="${safeText(r.id)}" data-leave-kind="${safeText(r.kind)}">Cancel</button>`:''}</div>`).join(''):'No recorded requests.'}</div>`;
   staffEl('staffDashboardContent').innerHTML=content;
-  staffMsg('staffFeedback','Staff actions are available only when authorised by the server.');
+  staffMsg('staffFeedback','All requests are checked by the secure server before any change is saved.');
 }
 function staffShiftActions(s){
-  if(!staffSessionToken||s.origIdx<0)return;
+  if(!staffSessionToken||s.origIdx<0||s.type==='restricted')return;
   const date=adminEditDate(s._displayDate),id=s.origIdx;
   const own=s.staff===staffSessionName,unavailable=isUnavailable(s)||['hol','unpaid','sick'].includes(s.type);
   const actionDiv=document.createElement('div');actionDiv.className='ibx';
@@ -927,6 +1007,7 @@ async function staffSignOut(){
 }
 staffEl('staffOpenBtn').addEventListener('click',staffOpenAuth);
 staffEl('staffAccountBtn').addEventListener('click',()=>{staffSetView(true);staffFetchDashboard();});
+staffEl('staffAlertsBtn').addEventListener('click',()=>{staffSetView(true);staffFetchDashboard();});
 staffEl('staffBackBtn').addEventListener('click',()=>staffSetView(false));
 staffEl('staffAuthCloseBtn').addEventListener('click',staffCloseAuth);
 staffEl('staffSwitchAuthBtn').addEventListener('click',()=>staffShowAuth(staffEl('staffSwitchAuthBtn').dataset.mode==='login'?'activate':'login'));
@@ -953,6 +1034,7 @@ staffEl('staffSignOutBtn').addEventListener('click',staffSignOut);
 staffEl('staffRefreshBtn').addEventListener('click',staffFetchDashboard);
 staffEl('staffChangePinBtn').addEventListener('click',()=>staffEl('changePinOverlay').classList.add('open'));
 staffEl('adminChangePinBtn').addEventListener('click',()=>staffEl('changePinOverlay').classList.add('open'));
+staffEl('adminReportPinBtn').addEventListener('click',()=>staffEl('changePinOverlay').classList.add('open'));
 staffEl('changePinCloseBtn').addEventListener('click',()=>staffEl('changePinOverlay').classList.remove('open'));
 staffEl('changePinForm').addEventListener('submit',async ev=>{
   ev.preventDefault();const current_pin=staffEl('currentPin').value,new_pin=staffEl('nextPin').value,confirm=staffEl('confirmNextPin').value;
@@ -972,7 +1054,7 @@ function chosenShift(value){const [date,index]=String(value).split('|');return s
 staffEl('staffDashboardContent').addEventListener('submit',ev=>{
   ev.preventDefault();const f=ev.target,shift=chosenShift(new FormData(f).get('shift'));
   if(f.id==='staffClaimForm')staffDo('claim_shift',shift);
-  else if(f.id==='staffSwapOfferForm')staffDo('offer_swap',shift);
+  else if(f.id==='staffSwapOfferForm')staffDo('offer_swap',{...shift,target_staff:String(new FormData(f).get('target_staff')||'')});
   else if(f.id==='staffLeaveForm')staffDo('request_leave',{...shift,kind:new FormData(f).get('kind')});
   else if(f.matches('.staffVolunteerForm'))staffDo('volunteer_swap',{...shift,offer_id:f.dataset.offerId});
 });
