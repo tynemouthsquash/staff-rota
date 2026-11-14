@@ -219,6 +219,28 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 .admin-exchange-card .admin-edit-note{padding:4px 0 0}
 @media(max-width:600px){.admin-controls-grid{grid-template-columns:1fr}.admin-controls-grid .admin-edit-shift{grid-template-columns:65px minmax(80px,1fr) 65px 65px auto;gap:3px;padding:5px 4px}.admin-exchange-card .admin-edit-shift{grid-template-columns:1fr}.admin-week-toolbar{justify-content:center;text-align:center}}
 
+
+/* v15.32.2 — restrained account/admin list density */
+.staff-upcoming .mrow,.staff-leave-requests .mrow{padding:4px 2px;min-height:25px;font-size:11px;gap:10px}
+.staff-upcoming .mrow span:last-child{white-space:nowrap;color:var(--muted);font-size:10px}
+.staff-upcoming,.staff-leave-requests{padding:10px 12px}
+.staff-upcoming h3,.staff-leave-requests h3{margin-bottom:5px}
+#adminSessionPanel{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:7px 12px;margin:7px 0;font-size:11px}
+#adminSessionPanel.auth-hidden{display:none}
+#adminSessionPanel h2{font-size:12px;margin:0}
+#adminSessionPanel p{font-size:10px;margin:0;flex:1 1 240px}
+#adminSessionPanel .auth-btn{font-size:10px;padding:5px 9px;width:auto;max-width:none!important;margin:0}
+.admin-leave-item{padding:5px 0;gap:8px}
+.admin-leave-item .auth-btn{padding:5px 8px;font-size:10px}
+@media(max-width:640px){.staff-upcoming .mrow{align-items:flex-start}.staff-leave-requests .mrow{flex-wrap:wrap}}
+
+.admin-leave-history{padding:10px 12px}
+.admin-leave-history h3{margin-bottom:6px}
+.admin-leave-history .rtb th,.admin-leave-history .rtb td{font-size:10px;padding:4px 7px;line-height:1.3}
+.admin-leave-scroll{max-height:250px;overflow:auto}
+.admin-leave-scroll .rtb thead{position:sticky;top:0;background:#fff;z-index:1}
+.staff-more{margin-top:7px;border-top:1px solid var(--border);padding-top:6px}
+.staff-more summary{cursor:pointer;font-size:11px;font-weight:700;color:var(--navy)}
 </style>
 <style>
   .preview-flag{font-size:11px;font-weight:700;color:#0a1e3d;background:#f0c060;padding:7px 10px;border-radius:6px}
@@ -297,8 +319,8 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
     </div>
   </div>
   <section id="adminSessionPanel" class="auth-success auth-hidden" aria-live="polite">
-    <h2>Administrator signed in</h2>
-    <p>Your administrator identity has been verified by the server. Individual shift edits and pending leave decisions are available only while the separate editing switch is enabled. Staff management remains disabled.</p>
+    <h2>Administrator active</h2>
+    <p>Secure administrator session. Use Admin Report for shift changes, exchanges and leave decisions.</p>
     <button class="auth-btn" id="adminChangePinBtn" type="button" style="max-width:180px">Change PIN</button><button class="auth-btn" id="adminPanelLogoutBtn" type="button" style="max-width:180px">Sign out</button>
   </section>
   <section id="adminReportPanel" class="auth-hidden" aria-label="Private administrator report">
@@ -674,9 +696,9 @@ function renderAdminReport(){
     hrsRows.push([name,String(counts[name]||0),(hours[name]||0).toFixed(1),holiday.toFixed(1),unpaid.toFixed(1),sick.toFixed(1)]);
     leaveRows.push([name,bal.allowance.toFixed(1),bal.taken.toFixed(1),bal.remaining.toFixed(1)]);
     for(const kind of ['req','upd']){
-      (Array.isArray(h[kind])?h[kind]:[]).forEach(r=>requests.push([name,kind==='req'?'Annual leave':'Unpaid leave',String(r.status||'Unknown'),String(r.dateFrom||r.from||r.date||'—'),String(r.dateUntil||r.to||'—'),String(r.hours??'—')]));
+      (Array.isArray(h[kind])?h[kind]:[]).forEach(r=>requests.push([name,kind==='req'?'Annual leave':'Unpaid leave',String(r.status||'Unknown'),String(r.dateFrom||r.from||r.date||'—'),String(r.dateUntil||r.to||'—'),(r.hours==null?'—':reportN(r.hours).toFixed(1))]));
     }
-    (Array.isArray(h.sick)?h.sick:[]).forEach(r=>sickRows.push([name,String(r.dateFrom||r.date||'—'),String(r.dateUntil||'—'),String(r.hours??'—'),String(r.status||'Logged')]));
+    (Array.isArray(h.sick)?h.sick:[]).forEach(r=>sickRows.push([name,String(r.dateFrom||r.date||'—'),String(r.dateUntil||'—'),(r.hours==null?'—':reportN(r.hours).toFixed(1)),String(r.status||'Logged')]));
     (details[name]||[]).forEach(d=>detailRows.push([name,d]));
   });
   const cards=hrsRows.filter(r=>Number(r[2])>0).map(r=>`<div class="rc"><div class="rcn">${safeText(r[0])}</div><div class="rch">${safeText(r[2])}</div><div class="rcl">worked hours</div></div>`).join('');
@@ -685,7 +707,7 @@ function renderAdminReport(){
     `<p class="admin-report-notice">Hours are calculated from the scheduled and recorded shift assignments, including overlapping-shift merging and the original 30-minute allowance for shifts of at least 6½ hours. Holiday and sickness entries are shown separately, not added to worked hours. Please review partial leave, bank-holiday premiums, sickness pay and manual adjustments against source records before running payroll.</p>`+
     section('Weekly hours',reportTable(['Staff','Shifts','Worked hours','Holiday (indicative)','Unpaid (indicative)','Sick (indicative)'],hrsRows))+
     section('Holiday balances',reportTable(['Staff','Allowance','Taken','Remaining'],leaveRows))+
-    section('Leave requests',reportTable(['Staff','Type','Status','From','To','Hours'],requests))+
+    `<div class="admin-report-section admin-leave-history"><h3>Leave requests</h3><div class="admin-leave-scroll">${reportTable(['Staff','Type','Status','From','To','Hours'],requests)}</div></div>`+
     section('Sickness records',reportTable(['Staff','From','To','Hours','Status'],sickRows))+
     section('Shift details',reportTable(['Staff','Shifts this week'],detailRows))+
     adminEditPanel();
@@ -740,7 +762,7 @@ function adminEditPanel(){
     for(const [key,kind] of [['req','annual'],['upd','unpaid']]){
       for(const r of (Array.isArray(h?.[key])?h[key]:[])){
         if(r?.status!=='pending'||r.id===undefined||r.id===null)continue;
-        pending.push(`<div class="admin-leave-item"><div><strong>${safeText(name)} — ${kind==='annual'?'Annual':'Unpaid'} leave</strong><div>${safeText(r.date||r.dateFrom||'Date not recorded')} · ${safeText(r.hours||0)} hours</div></div><div><button class="auth-btn" data-leave-decision="approved" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Approve</button> <button class="auth-btn" data-leave-decision="declined" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Decline</button></div></div>`);
+        pending.push(`<div class="admin-leave-item"><div><strong>${safeText(name)} — ${kind==='annual'?'Annual':'Unpaid'} leave</strong><div>${safeText(r.date||r.dateFrom||'Date not recorded')} · ${safeText(reportN(r.hours).toFixed(1))} hours</div></div><div><button class="auth-btn" data-leave-decision="approved" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Approve</button> <button class="auth-btn" data-leave-decision="declined" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Decline</button></div></div>`);
       }
     }
   }
@@ -771,6 +793,7 @@ async function submitAdminEdit(operation,payload){
       if(status)status.textContent=response.status===503?'Editing is disabled on the server. No change was made.':'Change not saved. '+String(data?.error||'Please review and try again.');
       return;
     }
+    await loadSchedule();
     await loadAdminReport();
     if(adminSessionToken===token){
       const current=authElement('adminEditFeedback');if(current)current.textContent='Saved. Administrator report refreshed.';
@@ -1010,7 +1033,7 @@ function staffRenderDashboard(){
   const stat=(label,value,detail)=>`<div class="staff-stat"><div class="staff-stat-label">${safeText(label)}</div><div class="staff-stat-number">${safeText(value)}</div><div class="staff-stat-detail">${safeText(detail)}</div></div>`;
   let content=`<div class="staff-stats">${stat('This week',current.hrs+' hrs',current.shifts+' scheduled shifts')}${stat('Last week',last.hrs+' hrs','Scheduled, not confirmed worked')}${stat('Holiday remaining',holidayLeft.toFixed(1)+' hrs','Indicative; confirm with admin')}${stat('Next shift',next?next.text.split(' ').slice(0,3).join(' '):'None',next?next.text:'No scheduled upcoming shift')}</div>`;
   content+=`<div class="admin-report-section"><h3>Notifications & upcoming activity</h3>${notices.join('')||'<p>No new shift offers or outstanding requests.</p>'}</div>`;
-  content+=`<div class="admin-report-section"><h3>My upcoming shifts</h3>${mine.length?mine.slice(0,35).map(x=>`<div class="mrow"><span>${safeText(x.text)}</span><span>${safeText(x.type||'Scheduled')}</span></div>`).join(''):'No shifts in the next three months.'}</div>`;
+  content+=`<div class="admin-report-section staff-upcoming"><h3>My upcoming shifts</h3>${mine.length?mine.slice(0,7).map(x=>`<div class="mrow"><span>${safeText(x.text)}</span><span>${safeText(x.type||'Scheduled')}</span></div>`).join('')+(mine.length>7?`<details class="staff-more"><summary>Show ${mine.length-7} more upcoming shifts</summary>${mine.slice(7).map(x=>`<div class="mrow"><span>${safeText(x.text)}</span><span>${safeText(x.type||'Scheduled')}</span></div>`).join('')}</details>`:''):'No shifts in the next three months.'}</div>`;
   content+=`<div class="admin-report-section"><h3>Shift cover</h3><form id="staffClaimForm"><div class="auth-field"><label>Available shift (next three months)</label><select name="shift" required>${openOpts}</select></div><button class="auth-btn" ${!available.length?'disabled':''}>Claim this shift</button></form></div>`;
   const colleagueOptions=STAFF.filter(s=>s.name!==staffSessionName).map(s=>`<option value="${safeText(s.name)}">${safeText(s.name)}</option>`).join('');
   content+=`<div class="admin-report-section"><h3>Offer a shift swap</h3><form id="staffSwapOfferForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Who should see this offer?</label><select name="target_staff"><option value="">All colleagues</option>${colleagueOptions}</select></div><button class="auth-btn" ${!mine.length?'disabled':''}>Offer shift for exchange</button></form><p class="admin-edit-note">If you choose a colleague, only they can respond. They must offer one of their own available shifts for you to approve.</p></div>`;
@@ -1022,7 +1045,7 @@ function staffRenderDashboard(){
   }).join(''):'No open swap offers.'}</div>`;
   content+=`<div class="admin-report-section"><h3>Request leave</h3><form id="staffLeaveForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Leave type</label><select name="kind"><option value="annual">Paid annual leave</option><option value="unpaid">Unpaid leave</option></select></div><button class="auth-btn" ${!mine.length?'disabled':''}>Submit leave request</button></form><p style="font-size:11px;margin-top:8px">One shift per request. Paid leave requires enough remaining allowance. All requests require administrator approval.</p></div>`;
   const leave=[...(h.req||[]).map(r=>({...r,kind:'annual'})),...(h.upd||[]).map(r=>({...r,kind:'unpaid'}))];
-  content+=`<div class="admin-report-section"><h3>My leave requests</h3>${leave.length?leave.map(r=>`<div class="mrow"><span>${safeText(r.kind)} · ${safeText(r.date)} · ${safeText(r.hours)}h · ${safeText(r.status)}</span>${r.status==='pending'?`<button class="sbtn sr" data-leave-cancel="${safeText(r.id)}" data-leave-kind="${safeText(r.kind)}">Cancel</button>`:''}</div>`).join(''):'No recorded requests.'}</div>`;
+  content+=`<div class="admin-report-section staff-leave-requests"><h3>My leave requests</h3>${leave.length?leave.map(r=>`<div class="mrow"><span>${safeText(r.kind)} · ${safeText(r.date)} · ${safeText(reportN(r.hours).toFixed(1))}h · ${safeText(r.status)}</span>${r.status==='pending'?`<button class="sbtn sr" data-leave-cancel="${safeText(r.id)}" data-leave-kind="${safeText(r.kind)}">Cancel</button>`:''}</div>`).join(''):'No recorded requests.'}</div>`;
   staffEl('staffDashboardContent').innerHTML=content;
   staffMsg('staffFeedback','All requests are checked by the secure server before any change is saved.');
 }
@@ -1046,8 +1069,8 @@ async function staffSignOut(){
   await loadSchedule();
 }
 staffEl('staffOpenBtn').addEventListener('click',staffOpenAuth);
-staffEl('staffAccountBtn').addEventListener('click',()=>{staffSetView(true);staffFetchDashboard();});
-staffEl('staffAlertsBtn').addEventListener('click',()=>{staffSetView(true);staffFetchDashboard();});
+staffEl('staffAccountBtn').addEventListener('click',async()=>{staffSetView(true);await loadSchedule();await staffFetchDashboard();});
+staffEl('staffAlertsBtn').addEventListener('click',async()=>{staffSetView(true);await loadSchedule();await staffFetchDashboard();});
 staffEl('staffBackBtn').addEventListener('click',()=>staffSetView(false));
 staffEl('staffAuthCloseBtn').addEventListener('click',staffCloseAuth);
 staffEl('staffSwitchAuthBtn').addEventListener('click',()=>staffShowAuth(staffEl('staffSwitchAuthBtn').dataset.mode==='login'?'activate':'login'));
@@ -1071,7 +1094,7 @@ staffEl('staffActivationForm').addEventListener('submit',async ev=>{
   }catch(e){staffMsg('staffAuthFeedback',e.message||'Activation failed');}
 });
 staffEl('staffSignOutBtn').addEventListener('click',staffSignOut);
-staffEl('staffRefreshBtn').addEventListener('click',staffFetchDashboard);
+staffEl('staffRefreshBtn').addEventListener('click',async()=>{await loadSchedule();await staffFetchDashboard();});
 staffEl('staffChangePinBtn').addEventListener('click',()=>staffEl('changePinOverlay').classList.add('open'));
 staffEl('adminChangePinBtn').addEventListener('click',()=>staffEl('changePinOverlay').classList.add('open'));
 staffEl('adminReportPinBtn').addEventListener('click',()=>staffEl('changePinOverlay').classList.add('open'));
