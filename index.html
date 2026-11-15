@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota - secure read-only preview v15.24 with administrator authentication UI -->
+<!-- TSC Staff Rota v15.33 - staff management and dated patterns -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -271,6 +271,7 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 .staff-inline-feedback{margin:8px 0 0;font-size:12px;font-weight:700;min-height:1.2em}
 @media(max-width:650px){.admin-exchange-card .admin-edit-shift{grid-template-columns:1fr}}
 
+.staff-mgmt-list{display:grid;gap:5px;margin-bottom:10px}.staff-mgmt-row{display:flex;gap:10px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding:5px 0;font-size:11px}.staff-mgmt-row strong{flex:1}.staff-mgmt-form{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-top:10px}.staff-mgmt-form label{display:flex;flex-direction:column;gap:4px;font-size:11px;min-width:130px}.staff-mgmt-form input,.staff-mgmt-form select{padding:8px;border:1px solid var(--border);border-radius:6px;max-width:210px;font:inherit}.staff-mgmt-form .auth-btn{padding:9px}
 </style>
 <style>
   .preview-flag{font-size:11px;font-weight:700;color:#0a1e3d;background:#f0c060;padding:7px 10px;border-radius:6px}
@@ -331,6 +332,7 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
 .staff-stat-detail{font-size:10px;color:var(--text2)}
 .staff-notice{background:var(--gbg);border:1px solid var(--gbrd);border-radius:8px;padding:10px 12px;font-size:12px;margin-bottom:7px}
 .staff-notice strong{color:var(--navy)}
+.staff-mgmt-list{display:grid;gap:5px;margin-bottom:10px}.staff-mgmt-row{display:flex;gap:10px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding:5px 0;font-size:11px}.staff-mgmt-row strong{flex:1}.staff-mgmt-form{display:flex;align-items:end;gap:8px;flex-wrap:wrap;margin-top:10px}.staff-mgmt-form label{display:flex;flex-direction:column;gap:4px;font-size:11px;min-width:130px}.staff-mgmt-form input,.staff-mgmt-form select{padding:8px;border:1px solid var(--border);border-radius:6px;max-width:210px;font:inherit}.staff-mgmt-form .auth-btn{padding:9px}
 </style>
 </head>
 <body>
@@ -376,7 +378,7 @@ body{font-family:'Syne',sans-serif;background:#f4f7fc;color:#0a1e3d}
   <div class="ov" id="staffAuthOverlay" role="dialog" aria-modal="true" aria-labelledby="staffAuthTitle">
     <div class="modal auth-modal"><div class="mh"><h2 id="staffAuthTitle">Staff Login</h2><button type="button" class="mcl" id="staffAuthCloseBtn" aria-label="Close">&#215;</button></div><div class="mb" style="max-height:none">
       <form id="staffLoginForm"><div class="auth-field"><label for="staffLoginName">Staff member</label><select id="staffLoginName" required></select></div><div class="auth-field"><label for="staffLoginPin">Six-digit PIN</label><input id="staffLoginPin" type="password" inputmode="numeric" autocomplete="off" minlength="6" maxlength="6" pattern="[0-9]{6}" required></div><button type="submit" class="auth-btn">Sign in</button></form>
-      <form id="staffActivationForm" class="auth-hidden"><div class="auth-field"><label for="staffActivationName">Staff member</label><select id="staffActivationName" required></select></div><div class="auth-field"><label for="staffActivationCode">Your original four-digit PIN</label><input id="staffActivationCode" type="password" inputmode="numeric" maxlength="4" minlength="4" pattern="[0-9]{4}" required autocomplete="off"><div class="auth-help">For first-time setup only. You must create a new six-digit PIN before signing in. Your old PIN will stop working.</div></div><div class="auth-field"><label for="staffActivationPin">New six-digit PIN</label><input id="staffActivationPin" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required></div><div class="auth-field"><label for="staffActivationConfirm">Confirm PIN</label><input id="staffActivationConfirm" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required></div><button type="submit" class="auth-btn">Activate PIN</button></form>
+      <form id="staffActivationForm" class="auth-hidden"><div class="auth-field"><label for="staffActivationName">Staff member</label><select id="staffActivationName" required></select></div><div class="auth-field"><label for="staffSetupMethod">Setup method</label><select id="staffSetupMethod"><option value="legacy">Original four-digit PIN (existing staff)</option><option value="code">One-time setup code (new or reactivated staff)</option></select></div><div class="auth-field"><label for="staffActivationCode" id="staffActivationCodeLabel">Original four-digit PIN</label><input id="staffActivationCode" type="password" inputmode="numeric" maxlength="4" minlength="4" pattern="[0-9]{4}" required autocomplete="off"><div class="auth-help" id="staffActivationHelp">Existing staff only: your original PIN works once to set a new six-digit PIN.</div></div><div class="auth-field"><label for="staffActivationPin">New six-digit PIN</label><input id="staffActivationPin" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required></div><div class="auth-field"><label for="staffActivationConfirm">Confirm PIN</label><input id="staffActivationConfirm" type="password" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required></div><button type="submit" class="auth-btn">Activate PIN</button></form>
       <p id="staffAuthFeedback" class="auth-message" role="status"></p><button type="button" class="auth-link" id="staffSwitchAuthBtn">First time? Set up your new PIN</button>
     </div></div>
   </div>
@@ -439,13 +441,22 @@ function weekNumber(start){
   const first=new Date(start.getFullYear(),3,1);while(first.getDay()!==5)first.setDate(first.getDate()+1);
   const n=Math.round((start-first)/604800000);return n<0?null:n+1;
 }
-function effectiveBaseStaff(index,date){
-  const slot=BASE[index];if(!slot)return '';
-  let assigned=slot.staff||'';
-  const changes=BASE_CHANGES.filter(c=>!c.applied&&c.baseIdx===index).slice().sort((a,b)=>String(a.effective).localeCompare(String(b.effective)));
-  for(const change of changes){const effective=parseDate(change.effective);if(effective&&effective<=date)assigned=change.staff||'';}
-  return assigned;
+function effectiveBaseShift(index,date){
+  const slot=BASE[index];if(!slot)return {staff:'',s:'',e:''};
+  const state={staff:slot.staff||'',s:slot.s,e:slot.e};
+  const changes=BASE_CHANGES.filter(c=>!c.applied&&Number(c.baseIdx)===index).slice()
+    .sort((a,b)=>String(a.effective).localeCompare(String(b.effective))||String(a.id).localeCompare(String(b.id)));
+  for(const change of changes){
+    const effective=parseDate(change.effective);
+    if(effective&&effective<=date){
+      if(typeof change.staff==='string')state.staff=change.staff;
+      if(/^([01]\d|2[0-3]):[0-5]\d$/.test(change.s||''))state.s=change.s;
+      if(/^([01]\d|2[0-3]):[0-5]\d$/.test(change.e||''))state.e=change.e;
+    }
+  }
+  return state;
 }
+function effectiveBaseStaff(index,date){return effectiveBaseShift(index,date).staff;}
 function shiftsForDate(date){
   const di=date.getDay()===0?6:date.getDay()-1;
   const key=dateKey(date,di);
@@ -455,8 +466,8 @@ function shiftsForDate(date){
       const baseSlots=BASE.filter(b=>b.day===di);
       const baseSlot=baseSlots[index];const bi=baseSlot?BASE.indexOf(baseSlot):-1;
       const id=bi>=0?`${date.toDateString()}-${bi}`:`cx-${key}-${index}`;
-      const planned=bi>=0?effectiveBaseStaff(bi,date):(shift.staff||'');
-      const timesChanged=Boolean(baseSlot&&(shift.s!==baseSlot.s||shift.e!==baseSlot.e));
+      const effective=bi>=0?effectiveBaseShift(bi,date):null;const planned=effective?effective.staff:(shift.staff||'');
+      const timesChanged=Boolean(baseSlot&&(shift.s!==(effective?.s||baseSlot.s)||shift.e!==(effective?.e||baseSlot.e)));
       const merged={...shift,staff:planned,start:shift.s,end:shift.e,id,day:di,origIdx:bi,...(sOv[id]||{})};
       if(timesChanged&&!merged.type)merged.type='modified';
       else if(timesChanged&&!['covered','swapped','hol','sick','unpaid','unavailable'].includes(merged.type))merged.type='modified';
@@ -465,7 +476,8 @@ function shiftsForDate(date){
   }
   return BASE.filter(b=>b.day===di).map(b=>{
     const bi=BASE.indexOf(b),id=`${date.toDateString()}-${bi}`;
-    return {...b,staff:effectiveBaseStaff(bi,date),start:b.s,end:b.e,id,day:di,origIdx:bi,...(sOv[id]||{})};
+    const effective=effectiveBaseShift(bi,date);
+    return {...b,...effective,start:effective.s,end:effective.e,id,day:di,origIdx:bi,...(sOv[id]||{})};
   });
 }
 function isUnavailable(shift){return shift.type!=='restricted'&&(!shift.staff||shift.staff==='(unassigned)'||['cover','unavailable'].includes(shift.type));}
@@ -671,7 +683,7 @@ function reportShiftGroups(){
         (groups[x.name]??={})[i]??=[];
         groups[x.name][i].push({s:x.s,e:x.e});
         counts[x.name]=(counts[x.name]||0)+1;
-        (details[x.name]??=[]).push(`${day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}: ${x.s}–${x.e}`);
+        (details[x.name]??=[]).push({dayIndex:i, startMinutes:shiftTime(x.s), label:`${day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}: ${x.s}–${x.e}`});
       });
     });
   }
@@ -728,8 +740,11 @@ function renderAdminReport(){
       (Array.isArray(h[kind])?h[kind]:[]).forEach(r=>requests.push([name,kind==='req'?'Annual leave':'Unpaid leave',String(r.status||'Unknown'),String(r.dateFrom||r.from||r.date||'—'),String(r.dateUntil||r.to||'—'),(r.hours==null?'—':reportN(r.hours).toFixed(1))]));
     }
     (Array.isArray(h.sick)?h.sick:[]).forEach(r=>sickRows.push([name,String(r.dateFrom||r.date||'—'),String(r.dateUntil||'—'),(r.hours==null?'—':reportN(r.hours).toFixed(1)),String(r.status||'Logged')]));
-    (details[name]||[]).forEach(d=>detailRows.push([name,d]));
+    (details[name]||[]).forEach(d=>detailRows.push({name, ...d}));
   });
+  // Sort all staff's shift details together by day and starting time, not by staff name.
+  detailRows.sort((a,b)=>a.dayIndex-b.dayIndex || a.startMinutes-b.startMinutes || a.name.localeCompare(b.name));
+  const chronologicalDetailRows=detailRows.map(d=>[d.name,d.label]);
   const cards=hrsRows.filter(r=>Number(r[2])>0).map(r=>`<div class="rc"><div class="rcn">${safeText(r[0])}</div><div class="rch">${safeText(r[2])}</div><div class="rcl">worked hours</div></div>`).join('');
   const section=(title,content)=>`<div class="admin-report-section"><h3>${safeText(title)}</h3>${content}</div>`;
   authElement('adminReportContent').innerHTML=`<div class="admin-report-summary">${cards}</div>`+
@@ -738,8 +753,8 @@ function renderAdminReport(){
     section('Holiday balances',reportTable(['Staff','Allowance','Taken','Remaining'],leaveRows))+
     `<div class="admin-report-section admin-leave-history"><h3>Leave requests</h3><div class="admin-leave-scroll">${reportTable(['Staff','Type','Status','From','To','Hours'],requests)}</div></div>`+
     section('Sickness records',reportTable(['Staff','From','To','Hours','Status'],sickRows))+
-    section('Shift details',reportTable(['Staff','Shifts this week'],detailRows))+
-    adminEditPanel();
+    section('Shift details',reportTable(['Staff','Shifts this week'],chronologicalDetailRows))+
+    adminEditPanel()+adminManagementPanel();
 }
 async function loadAdminReport(){
   if(!adminSessionToken)return;
@@ -820,6 +835,92 @@ function adminEditPanel(){
   const navigator=`<div class="admin-week-toolbar"><div class="admin-week-title">Editing week: ${safeText(weekLabel(adminControlsWs))}</div><div class="admin-week-buttons"><button type="button" class="nb" data-admin-week="-1" aria-label="Previous editing week">&#8592; Previous</button><button type="button" class="nb" data-admin-week="0">This week</button><button type="button" class="nb" data-admin-week="1" aria-label="Next editing week">Next &#8594;</button><label style="font-size:10px">Jump to date <input type="date" id="adminWeekJump" value="${adminEditDate(adminControlsWs)}" aria-label="Jump to an editing week"></label></div></div>`;
   return `<div class="admin-report-section"><h3>Administrator controls</h3><p class="admin-report-notice">Administrator edits are securely saved and audited. Previous weeks may be corrected through the shift editor. Direct exchanges are available for eligible future shifts only.</p><p id="adminEditFeedback" role="status" aria-live="polite"></p><h4>Pending leave decisions</h4>${pending.join('')||'<p>No pending leave decisions.</p>'}${navigator}${exchangeForm}<h4 style="margin:8px 0">Edit shifts · ${safeText(weekLabel(adminControlsWs))}</h4><div class="admin-controls-grid">${controls.join('')||'<p>No eligible shifts this week.</p>'}</div></div>`;
 }
+
+function adminManagementPanel(){
+  if(!adminSessionToken||!adminReportData)return '';
+  const accounts=Array.isArray(adminReportData.staff_accounts)?adminReportData.staff_accounts:[];
+  const rows=accounts.filter(x=>!x.is_admin).map(p=>{
+    const current=p.is_active!==false;
+    const disabled=current && BASE.some((b,i)=>effectiveBaseStaff(i,new Date())===p.name);
+    return `<div class="staff-mgmt-row"><strong>${safeText(p.name)}</strong><span>${current?'Active':'Inactive'}</span>`+
+      `<button type="button" class="nb" data-manage-name="${safeText(p.name)}" data-manage-act="${current?'deactivate':'reactivate'}" ${disabled?'disabled title="Reassign default shifts before deactivating"':''}>${current?'Deactivate':'Reactivate'}</button></div>`;
+  }).join('');
+  const options=STAFF.map(s=>`<option value="${safeText(s.name)}" ${s.name===effectiveBaseStaff(0,new Date())?'selected':''}>${safeText(s.name)}</option>`).join('');
+  const slots=BASE.map((b,i)=>`<option value="${i}">${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][b.day]||'Day'} · ${safeText(b.s)}–${safeText(b.e)} · ${safeText(b.staff)}</option>`).join('');
+  return `<section class="admin-report-section"><h3>Manage staff</h3><div class="staff-mgmt-list">${rows}</div>`+
+    `<form id="adminNewStaff" class="staff-mgmt-form"><label>New staff member <input name="name" maxlength="60" required placeholder="Full name"></label><button class="auth-btn">Add staff &amp; issue setup code</button></form>`+
+    `<p class="admin-edit-note">Reassign default recurring shifts before deactivating a staff member. Historical payroll records stay intact.</p>`+
+    `<p id="adminStaffMgmtFeedback" role="status" aria-live="polite"></p></section>`+
+    `<section class="admin-report-section"><h3>Default weekly shift pattern</h3>`+
+    `<p class="admin-edit-note">Changes begin on the effective date. Earlier weeks are preserved. Existing shift-specific overrides keep priority.</p>`+
+    `<form id="adminPatternForm" class="staff-mgmt-form">`+
+    `<label>Recurring shift <select name="base_index" required>${slots}</select></label>`+
+    `<label>Effective from <input type="date" name="effective" min="${adminEditDate(new Date())}" required value="${adminEditDate(new Date())}"></label>`+
+    `<label>Staff <select name="staff" required>${options}</select></label>`+
+    `<label>Starts <input type="time" name="start" required value="${safeText(BASE[0]?.s||'09:00')}"></label>`+
+    `<label>Ends <input type="time" name="end" required value="${safeText(BASE[0]?.e||'14:00')}"></label>`+
+    `<button class="auth-btn">Save recurring change</button></form>`+
+    `<p id="adminPatternFeedback" role="status" aria-live="polite"></p></section>`;
+}
+async function adminManageRequest(operation,payload){
+  if(adminEditBusy||!adminSessionToken)return;
+  adminEditBusy=true;
+  try{
+    const {response,data}=await authRequest('admin-write',{operation,payload},adminSessionToken);
+    if(!response.ok||data?.success!==true){alert('Change not saved: '+String(data?.error||'Check the details and retry'));return;}
+    await loadSchedule();await loadAdminReport();
+    if(typeof data.activation_code==='string' && /^[a-f0-9]{64}$/.test(data.activation_code)){
+      // Show the one-time code only to the signed-in administrator. No storage,
+      // URL parameters, console logging or insertion into the public rota.
+      const host=authElement('adminReportContent');
+      if(host){
+        const box=document.createElement('section');box.className='admin-report-section';
+        const heading=document.createElement('h3');heading.textContent='One-time PIN setup code — '+payload.name;
+        const note=document.createElement('p');note.className='admin-edit-note';
+        note.textContent='Copy this code and deliver it privately now. It will not be shown again after this panel is closed or the page is refreshed.';
+        const code=document.createElement('textarea');code.readOnly=true;code.rows=3;
+        code.style.cssText='width:100%;font:12px monospace;padding:8px;word-break:break-all';
+        code.value=data.activation_code;
+        const copy=document.createElement('button');copy.type='button';copy.className='nb';copy.textContent='Copy setup code';
+        copy.onclick=async()=>{try{await navigator.clipboard.writeText(code.value);copy.textContent='Copied';}
+          catch(_error){code.select();copy.textContent='Select and copy the code above';}};
+        const close=document.createElement('button');close.type='button';close.className='nb';
+        close.textContent='I have saved the code';close.onclick=()=>{code.value='';box.remove();};
+        box.append(heading,note,code,copy,close);host.prepend(box);
+        box.scrollIntoView({behavior:'smooth',block:'start'});
+      }
+    }
+  }catch(_error){alert('Could not save this administrator change.');}
+  finally{adminEditBusy=false;}
+}
+authElement('adminReportContent').addEventListener('submit',e=>{
+  const f=e.target.closest('#adminNewStaff, #adminPatternForm');if(!f)return;
+  e.preventDefault();const d=new FormData(f);
+  if(f.id==='adminNewStaff'){
+    const name=String(d.get('name')||'').trim();
+    if(!name||!confirm('Create secure staff account for '+name+'?'))return;
+    adminManageRequest('staff_add',{name});return;
+  }
+  const payload={base_index:Number(d.get('base_index')),effective:String(d.get('effective')||''),
+    staff:String(d.get('staff')||''),start:String(d.get('start')||''),end:String(d.get('end')||'')};
+  if(!confirm('Change this recurring shift from '+payload.effective+' onward? This affects the live rota.'))return;
+  adminManageRequest('pattern_change',payload);
+});
+authElement('adminReportContent').addEventListener('click',e=>{
+  const b=e.target.closest('button[data-manage-act]');if(!b)return;
+  const name=b.dataset.manageName,action=b.dataset.manageAct;
+  if(!confirm((action==='deactivate'?'Deactivate ':'Reactivate ')+name+'?'))return;
+  adminManageRequest('staff_'+action,{name});
+});
+authElement('adminReportContent').addEventListener('change',e=>{
+  if(e.target?.name!=='base_index'||e.target.closest('#adminPatternForm')===null)return;
+  const form=e.target.closest('#adminPatternForm');const idx=Number(e.target.value);
+  const effective=effectiveBaseShift(idx,parseDate(String(form.elements.effective.value||adminEditDate(new Date())))||new Date());
+  form.elements.staff.value=effective.staff;
+  form.elements.start.value=effective.s;
+  form.elements.end.value=effective.e;
+});
+
 let adminEditBusy=false;
 async function submitAdminEdit(operation,payload){
   if(adminEditBusy||!adminSessionToken)return;
@@ -986,7 +1087,7 @@ function staffShowAuth(mode){
   staffEl('staffAuthTitle').textContent=mode==='login'?'Staff Login':'First-time PIN Setup';
   staffEl('staffSwitchAuthBtn').textContent=mode==='login'?'First time? Set up your new PIN':'Already set up? Sign in';
   staffEl('staffSwitchAuthBtn').dataset.mode=mode;
-  staffMsg('staffAuthFeedback','Existing staff: sign in with your six-digit PIN. First time? Use your original four-digit PIN once to set a new one.');
+  staffMsg('staffAuthFeedback','Sign in with your six-digit PIN. First time? Choose your setup method below.');
 }
 function staffOpenAuth(){staffShowAuth('login');staffEl('staffAuthOverlay').classList.add('open');}
 function staffCloseAuth(){staffEl('staffAuthOverlay').classList.remove('open');staffEl('staffLoginForm').reset();staffEl('staffActivationForm').reset();}
@@ -1162,13 +1263,25 @@ staffEl('staffLoginForm').addEventListener('submit',async ev=>{
     staffSessionToken=data.token;staffSessionName=staff_name;staffCloseAuth();staffLoginUI();staffSetView(true);await staffFetchDashboard();
   }catch(e){staffMsg('staffAuthFeedback',e.message||'Unable to log in');}
 });
+staffEl('staffSetupMethod').addEventListener('change',()=>{
+  const codeMode=staffEl('staffSetupMethod').value==='code';
+  const input=staffEl('staffActivationCode');input.value='';
+  input.maxLength=codeMode?64:4;input.minLength=codeMode?64:4;
+  input.pattern=codeMode?'[a-f0-9]{64}':'[0-9]{4}';
+  input.inputMode=codeMode?'text':'numeric';
+  staffEl('staffActivationCodeLabel').textContent=codeMode?'Your one-time setup code':'Original four-digit PIN';
+  staffEl('staffActivationHelp').textContent=codeMode?'Enter the private 64-character code issued by the administrator.':'Existing staff only: the original four-digit PIN works once.';
+});
 staffEl('staffActivationForm').addEventListener('submit',async ev=>{
   ev.preventDefault();const staff_name=staffEl('staffActivationName').value,old_pin=staffEl('staffActivationCode').value,
   new_pin=staffEl('staffActivationPin').value,confirmation=staffEl('staffActivationConfirm').value;
   if(!staffValidPin(new_pin)||new_pin!==confirmation){staffMsg('staffAuthFeedback','Choose matching, less predictable six-digit PINs');return;}
-  try{const {response,data}=await authRequest('legacy-activate',{staff_name,old_pin,new_pin});
+  const codeMode=staffEl('staffSetupMethod').value==='code';
+  const activation=codeMode?{action:'activate',body:{staff_name,code:old_pin,new_pin}}:
+    {action:'legacy-activate',body:{staff_name,old_pin,new_pin}};
+  try{const {response,data}=await authRequest(activation.action,activation.body);
     if(!response.ok)throw Error(data.error||'Activation failed');
-    staffEl('staffActivationForm').reset();staffShowAuth('login');staffMsg('staffAuthFeedback','PIN activated. You can now sign in.');
+    staffEl('staffActivationForm').reset();staffEl('staffSetupMethod').dispatchEvent(new Event('change'));staffShowAuth('login');staffMsg('staffAuthFeedback','PIN activated. You can now sign in.');
   }catch(e){staffMsg('staffAuthFeedback',e.message||'Activation failed');}
 });
 staffEl('staffSignOutBtn').addEventListener('click',staffSignOut);
