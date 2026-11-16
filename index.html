@@ -656,13 +656,21 @@ function reportDateFromId(id){
   const date=new Date(String(id).slice(0,pos));
   return Number.isNaN(date.getTime())?null:date;
 }
+function reportLeaveHours(start,end){
+  const a=shiftTime(start),b0=shiftTime(end);
+  if(!Number.isFinite(a)||!Number.isFinite(b0))return 0;
+  return Math.round(((b0<a?b0+24:b0)-a)*100)/100;
+}
 function reportWeekKeyHours(keys){
   if(!Array.isArray(keys))return 0;
   const end=new Date(ws);end.setDate(end.getDate()+7);
   return keys.reduce((total,id)=>{
     const date=reportDateFromId(id);if(!date||date<ws||date>=end)return total;
     const parts=String(id).split('-');const idx=Number(parts[parts.length-1]);
-    const slot=BASE[idx];return total+(slot?reportHrs(slot.s,slot.e):0);
+    const slot=BASE[idx];
+    // Leave is scheduled time only; paid lunch applies to WORKED shifts.
+    const effective=slot && typeof effectiveBaseShift==='function'?effectiveBaseShift(idx,date):slot;
+    return total+(effective?reportLeaveHours(effective.s,effective.e):0);
   },0);
 }
 function reportShiftGroups(){
@@ -751,6 +759,7 @@ function renderAdminReport(){
     `<p class="admin-report-notice">Hours are calculated from the scheduled and recorded shift assignments, including overlapping-shift merging and the original 30-minute allowance for shifts of at least 6½ hours. Holiday and sickness entries are shown separately, not added to worked hours. Please review partial leave, bank-holiday premiums, sickness pay and manual adjustments against source records before running payroll.</p>`+
     section('Weekly hours',reportTable(['Staff','Shifts','Worked hours','Holiday (indicative)','Unpaid (indicative)','Sick (indicative)'],hrsRows))+
     section('Holiday balances',reportTable(['Staff','Allowance','Taken','Remaining'],leaveRows))+
+    adminHolidayAllowancePanel(names)+
     `<div class="admin-report-section admin-leave-history"><h3>Leave requests</h3><div class="admin-leave-scroll">${reportTable(['Staff','Type','Status','From','To','Hours'],requests)}</div></div>`+
     section('Sickness records',reportTable(['Staff','From','To','Hours','Status'],sickRows))+
     section('Shift details',reportTable(['Staff','Shifts this week'],chronologicalDetailRows))+
@@ -836,6 +845,19 @@ function adminEditPanel(){
   return `<div class="admin-report-section"><h3>Administrator controls</h3><p class="admin-report-notice">Administrator edits are securely saved and audited. Previous weeks may be corrected through the shift editor. Direct exchanges are available for eligible future shifts only.</p><p id="adminEditFeedback" role="status" aria-live="polite"></p><h4>Pending leave decisions</h4>${pending.join('')||'<p>No pending leave decisions.</p>'}${navigator}${exchangeForm}<h4 style="margin:8px 0">Edit shifts · ${safeText(weekLabel(adminControlsWs))}</h4><div class="admin-controls-grid">${controls.join('')||'<p>No eligible shifts this week.</p>'}</div></div>`;
 }
 
+function adminHolidayAllowancePanel(names){
+  const eligible=(names||[]).filter(name=>STAFF.some(s=>s.name===name));
+  const options=eligible.map(name=>`<option value="${safeText(name)}">${safeText(name)}</option>`).join('');
+  const first=eligible[0];
+  const total=first?reportBalance(first).allowance:0;
+  return `<section class="admin-report-section"><h3>Adjust holiday allowance</h3>`+
+    `<p class="admin-edit-note">Set a staff member's total holiday allowance in hours. This adjusts entitlement only, not leave already taken. Changes are saved and audited.</p>`+
+    `<form id="adminHolidayAllowanceForm" class="staff-mgmt-form">`+
+    `<label>Staff <select name="staff" required>${options}</select></label>`+
+    `<label>Total allowance (hours) <input type="number" name="total" min="0" max="1000" step="0.1" required value="${total.toFixed(1)}"></label>`+
+    `<button type="submit" class="auth-btn" ${!first?'disabled':''}>Save allowance</button></form>`+
+    `<p id="adminAllowanceFeedback" role="status" aria-live="polite"></p></section>`;
+}
 function adminManagementPanel(){
   if(!adminSessionToken||!adminReportData)return '';
   const accounts=Array.isArray(adminReportData.staff_accounts)?adminReportData.staff_accounts:[];
@@ -894,6 +916,20 @@ async function adminManageRequest(operation,payload){
   finally{adminEditBusy=false;}
 }
 authElement('adminReportContent').addEventListener('submit',e=>{
+  const allowanceForm=e.target.closest('#adminHolidayAllowanceForm');
+  if(allowanceForm){
+    e.preventDefault();
+    const d=new FormData(allowanceForm);
+    const staff=String(d.get('staff')||'');
+    const total=Number(d.get('total'));
+    if(!STAFF.some(p=>p.name===staff)||!Number.isFinite(total)||total<0||total>1000||Math.round(total*10)!==total*10){
+      alert('Enter a valid holiday allowance in increments of 0.1 hours.');return;
+    }
+    const before=reportBalance(staff);
+    if(!confirm(`Change ${staff}'s total holiday allowance from ${before.allowance.toFixed(1)} to ${total.toFixed(1)} hours? Previously taken leave is unchanged.`))return;
+    adminManageRequest('holiday_allowance',{staff,total});
+    return;
+  }
   const f=e.target.closest('#adminNewStaff, #adminPatternForm');if(!f)return;
   e.preventDefault();const d=new FormData(f);
   if(f.id==='adminNewStaff'){
@@ -913,6 +949,11 @@ authElement('adminReportContent').addEventListener('click',e=>{
   adminManageRequest('staff_'+action,{name});
 });
 authElement('adminReportContent').addEventListener('change',e=>{
+  if(e.target?.name==='staff' && e.target.closest('#adminHolidayAllowanceForm')){
+    const form=e.target.closest('#adminHolidayAllowanceForm');
+    form.elements.total.value=reportBalance(e.target.value).allowance.toFixed(1);
+    return;
+  }
   if(e.target?.name!=='base_index'||e.target.closest('#adminPatternForm')===null)return;
   const form=e.target.closest('#adminPatternForm');const idx=Number(e.target.value);
   const effective=effectiveBaseShift(idx,parseDate(String(form.elements.effective.value||adminEditDate(new Date())))||new Date());
