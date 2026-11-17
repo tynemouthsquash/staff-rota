@@ -778,7 +778,7 @@ function renderAdminReport(){
   status.textContent=`Payroll week: ${weekLabel(ws)} (Friday–Thursday). Figures are scheduled estimates until checked against actual attendance and pay rules.`;
   const {hours,counts}=reportShiftGroups();
   const hol=adminReportData.hol||{};
-  const names=[...new Set([...STAFF.map(x=>x.name),...Object.keys(hours),...Object.keys(hol)])].filter(n=>n!=='Rota Administrator');
+  const names=[...new Set([...STAFF.map(x=>x.name),...Object.keys(hours),...Object.keys(hol)])].filter(n=>n!=='Rota Administrator' && !n.startsWith('__'));
   const hrsRows=[],leaveRows=[],requests=[],sickRows=[],cards=[];
   names.forEach(name=>{
     const h=hol[name]||{};
@@ -787,7 +787,7 @@ function renderAdminReport(){
     const {paid,unpaid,recordedSick,payableSick}=reportPayrollWeek(name,h);
     const total=Math.round((work+paid+payableSick)*10)/10;
     hrsRows.push([name,String(counts[name]||0),work.toFixed(1),paid.toFixed(1),unpaid.toFixed(1),recordedSick.toFixed(1),payableSick.toFixed(1),total.toFixed(1)]);
-    cards.push(`<div class="rc payroll-card"><div class="rcn">${safeText(name)}</div><div class="rch">${safeText(total.toFixed(1))}<span> hrs</span></div><div class="rcl">Payroll total</div><div class="payroll-breakdown">Worked ${safeText(work.toFixed(1))} · Holiday ${safeText(paid.toFixed(1))} · Sick pay ${safeText(payableSick.toFixed(1))}</div></div>`);
+    if(total>0) cards.push(`<div class="rc payroll-card"><div class="rcn">${safeText(name)}</div><div class="rch">${safeText(total.toFixed(1))}<span> hrs</span></div><div class="rcl">Payroll total</div><div class="payroll-breakdown">Worked ${safeText(work.toFixed(1))} · Holiday ${safeText(paid.toFixed(1))} · Sick pay ${safeText(payableSick.toFixed(1))}</div></div>`);
     leaveRows.push([name,bal.allowance.toFixed(1),bal.taken.toFixed(1),bal.remaining.toFixed(1)]);
     for(const kind of ['req','upd']){
       (Array.isArray(h[kind])?h[kind]:[]).forEach(r=>requests.push([name,kind==='req'?'Annual leave':'Unpaid leave',String(r.status||'Unknown'),String(r.dateFrom||r.from||r.date||'—'),String(r.dateUntil||r.to||'—'),(r.hours==null?'—':reportN(r.hours).toFixed(1))]));
@@ -798,7 +798,7 @@ function renderAdminReport(){
   const sickOptions=names.map(n=>`<option value="${safeText(n)}">${safeText(n)}</option>`).join('');
   const sickForm=`<div class="admin-report-section"><h3>Confirm payable sick hours</h3><p class="admin-edit-note">Sickness recorded on the rota does not automatically establish sick-pay entitlement. Enter the approved payable hours for the selected Friday–Thursday payroll week. Zero means no sick hours added to payroll.</p><form id="adminPayrollSickForm" class="admin-edit-shift"><label>Staff <select name="staff" required>${sickOptions}</select></label><label>Payable sick hours <input type="number" name="hours" min="0" max="168" step="0.1" required value="${safeText(reportN(hol[names[0]]?.payrollSick?.[adminEditDate(ws)]).toFixed(1))}"></label><button class="auth-btn">Save sick pay hours</button></form></div>`;
   authElement('adminReportContent').innerHTML=
-    `<div class="admin-report-summary">${cards.join('')}</div>`+
+    `<div class="admin-report-summary">${cards.join('')||'<p>No payable hours recorded for this week.</p>'}</div>`+
     `<p class="admin-report-notice payroll-note">Payroll total = scheduled worked hours (including the additional paid half-hour for qualifying shifts) + approved paid holiday hours + administrator-confirmed payable sick hours. Unpaid leave is excluded. Pending leave and unverified historical entries are not counted. Confirm actual attendance, sickness eligibility, premiums and past deductions before using these figures to pay wages.</p>`+
     section('Seven-day shift overview',adminWeeklyShiftGrid())+
     section('Weekly hours & payroll',reportTable(['Staff','Shifts','Worked','Paid leave','Unpaid leave','Sick recorded','Sick pay','Payroll total'],hrsRows))+
