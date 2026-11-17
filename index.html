@@ -744,10 +744,16 @@ function reportBalance(name){
 // Payroll is scheduled work + approved paid leave + admin-confirmed payable sick hours.
 // Unpaid leave is recorded for clarity, but never included in the payable total.
 function reportPayrollWeek(name,h){
-  const paid=(Array.isArray(h.req)?h.req:[]).filter(r=>r && r.status==='approved')
-    .reduce((sum,r)=>sum+reportWeekKeyHours(r.shiftKeys),0);
-  const unpaid=(Array.isArray(h.upd)?h.upd:[]).filter(r=>r && r.status==='approved')
-    .reduce((sum,r)=>sum+reportWeekKeyHours(r.shiftKeys),0);
+  // New split requests include explicit paid and unpaid hours; never
+  // derive their paid part from the whole shift duration.
+  // Legacy requests retain the existing shift-key-based calculation.
+  const annual=(Array.isArray(h.req)?h.req:[]).filter(r=>r && r.status==='approved');
+  const unpaidRequests=(Array.isArray(h.upd)?h.upd:[]).filter(r=>r && r.status==='approved');
+  const inWeek=r=>reportWeekKeyHours(r.shiftKeys)>0;
+  const hasParts=r=>r.paidHours!==undefined && r.unpaidHours!==undefined;
+  const paid=annual.reduce((sum,r)=>sum+(hasParts(r)?(inWeek(r)?reportN(r.paidHours):0):reportWeekKeyHours(r.shiftKeys)),0);
+  const unpaid=unpaidRequests.reduce((sum,r)=>sum+(hasParts(r)?(inWeek(r)?reportN(r.unpaidHours):0):reportWeekKeyHours(r.shiftKeys)),0)
+    +annual.reduce((sum,r)=>sum+(hasParts(r)&&inWeek(r)?reportN(r.unpaidHours):0),0);
   const recordedSick=(Array.isArray(h.sick)?h.sick:[])
     .reduce((sum,r)=>sum+reportWeekKeyHours(r.shiftIds||(r.shiftId?[r.shiftId]:[])),0);
   const key=adminEditDate(ws);
@@ -790,7 +796,7 @@ function renderAdminReport(){
     if(total>0) cards.push(`<div class="rc payroll-card"><div class="rcn">${safeText(name)}</div><div class="rch">${safeText(total.toFixed(1))}<span> hrs</span></div><div class="rcl">Payroll total</div><div class="payroll-breakdown">Worked ${safeText(work.toFixed(1))} · Holiday ${safeText(paid.toFixed(1))} · Sick pay ${safeText(payableSick.toFixed(1))}</div></div>`);
     leaveRows.push([name,bal.allowance.toFixed(1),bal.taken.toFixed(1),bal.remaining.toFixed(1)]);
     for(const kind of ['req','upd']){
-      (Array.isArray(h[kind])?h[kind]:[]).forEach(r=>requests.push([name,kind==='req'?'Annual leave':'Unpaid leave',String(r.status||'Unknown'),String(r.dateFrom||r.from||r.date||'—'),String(r.dateUntil||r.to||'—'),(r.hours==null?'—':reportN(r.hours).toFixed(1))]));
+      (Array.isArray(h[kind])?h[kind]:[]).forEach(r=>requests.push([name,kind==='req'?(reportN(r.unpaidHours)>0?'Mixed paid / unpaid':'Annual leave'):'Unpaid leave',String(r.status||'Unknown'),String(r.dateFrom||r.from||r.date||'—'),String(r.dateUntil||r.to||'—'),r.paidHours!==undefined&&r.unpaidHours!==undefined?`${reportN(r.paidHours).toFixed(1)} paid + ${reportN(r.unpaidHours).toFixed(1)} unpaid`:(r.hours==null?'—':reportN(r.hours).toFixed(1))]));
     }
     (Array.isArray(h.sick)?h.sick:[]).forEach(r=>sickRows.push([name,String(r.dateFrom||r.date||'—'),String(r.dateUntil||'—'),(r.hours==null?'—':reportN(r.hours).toFixed(1)),String(r.status||'Logged')]));
   });
@@ -862,7 +868,7 @@ function adminEditPanel(){
     for(const [key,kind] of [['req','annual'],['upd','unpaid']]){
       for(const r of (Array.isArray(h?.[key])?h[key]:[])){
         if(r?.status!=='pending'||r.id===undefined||r.id===null)continue;
-        pending.push(`<div class="admin-leave-item"><div><strong>${safeText(name)} — ${kind==='annual'?'Annual':'Unpaid'} leave</strong><div>${safeText(r.date||r.dateFrom||'Date not recorded')} · ${safeText(reportN(r.hours).toFixed(1))} hours</div></div><div><button class="auth-btn" data-leave-decision="approved" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Approve</button> <button class="auth-btn" data-leave-decision="declined" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Decline</button></div></div>`);
+        pending.push(`<div class="admin-leave-item"><div><strong>${safeText(name)} — ${kind==='annual'?'Annual':'Unpaid'} leave</strong><div>${safeText(r.date||r.dateFrom||'Date not recorded')} · ${r.paidHours!==undefined && r.unpaidHours!==undefined?`${safeText(reportN(r.paidHours).toFixed(1))}h paid + ${safeText(reportN(r.unpaidHours).toFixed(1))}h unpaid`:`${safeText(reportN(r.hours).toFixed(1))} hours`}</div></div><div><button class="auth-btn" data-leave-decision="approved" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Approve</button> <button class="auth-btn" data-leave-decision="declined" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Decline</button></div></div>`);
       }
     }
   }
@@ -1309,9 +1315,9 @@ function staffRenderDashboard(){
       o.vols.map(v=>`<div class="mrow"><span>${safeText(v.name)} offers ${safeText(v.label)}</span><button class="sbtn sg" data-swap-accept="${safeText(o.id)}" data-volunteer="${safeText(v.name)}">Accept exchange</button></div>`).join('');
     return `<form class="staffVolunteerForm mrow" data-offer-id="${safeText(o.id)}"><span><strong>${safeText(o.staff)}</strong> offers ${safeText(o.dateStr)} ${safeText(o.s)}–${safeText(o.e)}</span><label>My shift to exchange <select name="shift" required>${ownOpts}</select></label><button class="sbtn sg" ${!eligibleMine.length?'disabled':''}>Propose exchange</button></form>`;
   }).join(''):'No open swap offers.'}</div>`;
-  content+=`<div class="admin-report-section"><h3>Request leave</h3><form id="staffLeaveForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Leave type</label><select name="kind"><option value="annual">Paid annual leave</option><option value="unpaid">Unpaid leave</option></select></div><button class="auth-btn" ${!eligibleMine.length?'disabled':''}>Submit leave request</button></form><p style="font-size:11px;margin-top:8px">Unpaid leave can be requested even with no paid holiday remaining. Paid leave requires a sufficient balance. All leave requests require administrator approval.</p></div>`;
+  content+=`<div class="admin-report-section"><h3>Request leave</h3><form id="staffLeaveForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Leave type</label><select name="kind"><option value="annual">Paid annual leave</option><option value="unpaid">Unpaid leave</option></select></div><button class="auth-btn" ${!eligibleMine.length?'disabled':''}>Submit leave request</button></form><p style="font-size:11px;margin-top:8px">Unpaid leave can be requested even with no paid holiday remaining. Paid leave uses the balance available. If it does not cover the full shift, the remainder is automatically requested as unpaid leave. All leave requests require administrator approval.</p></div>`;
   const leave=[...(h.req||[]).map(r=>({...r,kind:'annual'})),...(h.upd||[]).map(r=>({...r,kind:'unpaid'}))];
-  content+=`<div class="admin-report-section staff-leave-requests"><h3>My leave requests</h3>${leave.length?leave.map(r=>`<div class="mrow"><span>${safeText(r.kind)} · ${safeText(r.date)} · ${safeText(reportN(r.hours).toFixed(1))}h · ${safeText(r.status)}</span>${r.status==='pending'?`<button class="sbtn sr" data-leave-cancel="${safeText(r.id)}" data-leave-kind="${safeText(r.kind)}">Cancel</button>`:''}</div>`).join(''):'No recorded requests.'}</div>`;
+  content+=`<div class="admin-report-section staff-leave-requests"><h3>My leave requests</h3>${leave.length?leave.map(r=>`<div class="mrow"><span>${safeText(r.kind)} · ${safeText(r.date)} · ${r.paidHours!==undefined&&r.unpaidHours!==undefined?`${safeText(reportN(r.paidHours).toFixed(1))}h paid + ${safeText(reportN(r.unpaidHours).toFixed(1))}h unpaid`:`${safeText(reportN(r.hours).toFixed(1))}h`} · ${safeText(r.status)}</span>${r.status==='pending'?`<button class="sbtn sr" data-leave-cancel="${safeText(r.id)}" data-leave-kind="${safeText(r.kind)}">Cancel</button>`:''}</div>`).join(''):'No recorded requests.'}</div>`;
   staffEl('staffDashboardContent').innerHTML=content;
 }
 function staffShiftActions(s){
@@ -1416,7 +1422,21 @@ staffEl('staffDashboardContent').addEventListener('submit',ev=>{
       .then(ok=>{if(!ok){const note=staffEl('staffFeedback');if(note)note.scrollIntoView({block:'center',behavior:'smooth'});}})
       .finally(()=>{if(button.isConnected){button.disabled=false;button.textContent='Offer shift for exchange';}});
   }
-  else if(f.id==='staffLeaveForm')staffDo('request_leave',{...shift,kind:new FormData(f).get('kind')});
+  else if(f.id==='staffLeaveForm'){
+    const kind=new FormData(f).get('kind');
+    const shiftDate=new Date(shift.date+'T12:00:00');
+    const selected=shiftsForDate(shiftDate).find(s=>s.origIdx===shift.base_index);
+    const length=selected?reportLeaveHours(selected.s||selected.start,selected.e||selected.end):0;
+    if(!(length>0)){staffMsg('staffFeedback','Could not calculate the selected shift length. Please refresh and retry.');return;}
+    const h=staffDashboardData?.hol||{};
+    const entitlement=(BASE.filter(b=>b.staff===staffSessionName).reduce((n,b)=>n+reportLeaveHours(b.s,b.e),0)*4)
+      +reportN(h.contractProrata)+reportN(h.adjBaked)+reportN(h.adj);
+    const balance=Math.max(0,entitlement-reportN(h.taken));
+    const paid=kind==='annual'?Math.min(length,balance):0;
+    const unpaid=Math.max(0,length-paid);
+    if(!confirm(`Request ${length.toFixed(1)} hours off?\nPaid holiday: ${paid.toFixed(1)} hours\nUnpaid leave: ${unpaid.toFixed(1)} hours\n\nThis is an estimate; the server will recalculate the balance. The request remains pending until administrator approval.`))return;
+    staffDo('request_leave',{...shift,kind});
+  }
   else if(f.matches('.staffVolunteerForm'))staffDo('volunteer_swap',{...shift,offer_id:f.dataset.offerId});
 });
 staffEl('staffDashboardContent').addEventListener('click',ev=>{
