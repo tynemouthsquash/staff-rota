@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<!-- TSC Staff Rota v15.33 - staff management and dated patterns -->
+<!-- TSC Staff Rota v15.36.1 - leave feedback, date formatting and title -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tynemouth Squash Club — Staff Rota (Read-only Preview)</title>
+<title>Tynemouth Squash Club Staff Rota</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -451,7 +451,21 @@ function parseDate(v){
 }
 function shiftTime(t){const [h,m]=String(t).split(':').map(Number);return h+m/60;}
 function formatTime(t){const [h,m]=String(t).split(':');const hr=Number(h);return `${hr%12||12}${m!=='00'?':'+m:''}${hr>=12?'pm':'am'}`;}
-function weekLabel(start){const end=new Date(start);end.setDate(end.getDate()+6);return `${start.getDate()} ${MON[start.getMonth()]} – ${end.getDate()} ${MON[end.getMonth()]} ${end.getFullYear()}`;}
+// Presentation only: API keys, request IDs and native date input values remain ISO.
+const DISPLAY_DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function displayDate(date){
+  if(!(date instanceof Date)||Number.isNaN(date.getTime()))return '—';
+  return `${DISPLAY_DAYS[date.getDay()]}, ${String(date.getDate()).padStart(2,'0')}-${MON[date.getMonth()]}-${date.getFullYear()}`;
+}
+function displayDateValue(value){
+  if(value instanceof Date)return displayDate(value);
+  const raw=String(value??'').trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(raw))return displayDate(parseDate(raw));
+  // A small number of older records use human-written date ranges without a year;
+  // leave those unchanged instead of inventing the year.
+  return raw||'—';
+}
+function weekLabel(start){const end=new Date(start);end.setDate(end.getDate()+6);return `${displayDate(start)} – ${displayDate(end)}`;}
 function weekNumber(start){
   const first=new Date(start.getFullYear(),3,1);while(first.getDay()!==5)first.setDate(first.getDate()+1);
   const n=Math.round((start-first)/604800000);return n<0?null:n+1;
@@ -525,7 +539,7 @@ function drawWeek(){
     const ends=shifts.map(s=>{const start=shiftTime(s.s||s.start),end=shiftTime(s.e||s.end);return end<start?end+24:end;});
     const min=starts.length?Math.min(...starts):12,max=ends.length?Math.max(...ends):23.5;
     const span=Math.max(max-min,1);
-    html+=`<div><div class="dhead${isToday?' tdcol':''}"><div class="dn">${DAYS[day]}</div><div class="dd">${isToday?`<span class="tdnum">${date.getDate()}</span>`:date.getDate()}</div></div><div class="tl" style="height:${height}px">`;
+    html+=`<div><div class="dhead${isToday?' tdcol':''}" title="${safeText(displayDate(date))}"><div class="dn">${DAYS[day]}</div><div class="dd">${isToday?`<span class="tdnum">${date.getDate()}</span>`:date.getDate()}</div></div><div class="tl" style="height:${height}px">`;
     if(!shifts.length)html+='<div style="padding:18px 3px;text-align:center;font-size:10px;color:var(--muted)">No shifts</div>';
     for(let index=0;index<shifts.length;index++){
       const s=shifts[index];const start=shiftTime(s.s||s.start);let end=shiftTime(s.e||s.end);if(end<start)end+=24;
@@ -546,7 +560,7 @@ function openShift(s){
   const name=s.type==='restricted'?'Manager-managed':(isUnavailable(s)?'Cover needed':(s.staff||'Unassigned'));
   const start=s.s||s.start,end=s.e||s.end;
   const st=shiftTime(start),et=shiftTime(end);const duration=((et<st?et+24:et)-st).toFixed(2);
-  document.getElementById('shiftDetails').innerHTML=`<div class="mrow"><span class="mlbl">Date</span><span class="mval">${safeText(date.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric'}))}</span></div><div class="mrow"><span class="mlbl">Staff</span><span class="mval">${safeText(name)}</span></div><div class="mrow"><span class="mlbl">Shift</span><span class="mval">${safeText(formatTime(start))}–${safeText(formatTime(end))}</span></div><div class="mrow"><span class="mlbl">Duration</span><span class="mval">${safeText(duration)} hours</span></div>${tag?`<div class="mrow"><span class="mlbl">Status</span><span class="mval">${safeText(tag)}</span></div>`:''}<div class="ibx" style="margin-top:12px">Sign in to see authorised shift actions. Manager-managed shifts cannot be claimed directly.</div>`;
+  document.getElementById('shiftDetails').innerHTML=`<div class="mrow"><span class="mlbl">Date</span><span class="mval">${safeText(displayDate(date))}</span></div><div class="mrow"><span class="mlbl">Staff</span><span class="mval">${safeText(name)}</span></div><div class="mrow"><span class="mlbl">Shift</span><span class="mval">${safeText(formatTime(start))}–${safeText(formatTime(end))}</span></div><div class="mrow"><span class="mlbl">Duration</span><span class="mval">${safeText(duration)} hours</span></div>${tag?`<div class="mrow"><span class="mlbl">Status</span><span class="mval">${safeText(tag)}</span></div>`:''}<div class="ibx" style="margin-top:12px">Sign in to see authorised shift actions. Manager-managed shifts cannot be claimed directly.</div>`;
   if(staffSessionToken && !adminSessionToken) staffShiftActions(s);
   document.getElementById('shiftOverlay').classList.add('open');
 }
@@ -706,7 +720,7 @@ function reportShiftGroups(){
         (groups[x.name]??={})[i]??=[];
         groups[x.name][i].push({s:x.s,e:x.e});
         counts[x.name]=(counts[x.name]||0)+1;
-        (details[x.name]??=[]).push({dayIndex:i, startMinutes:shiftTime(x.s), label:`${day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}: ${x.s}–${x.e}`});
+        (details[x.name]??=[]).push({dayIndex:i, startMinutes:shiftTime(x.s), label:`${displayDate(day)}: ${x.s}–${x.e}`});
       });
     });
   }
@@ -773,7 +787,7 @@ function adminWeeklyShiftGrid(){
         ['unavailable','cover','restricted'].includes(kind)||who==='(unassigned)'?'Cover needed':kind==='covered'?'Covered':'';
       return `<div class="payroll-shift${cls}"><span class="payroll-shift-time">${safeText(s.s||s.start||'—')}–${safeText(s.e||s.end||'—')}</span><strong>${safeText(who)}</strong>${label?`<small>${safeText(label)}</small>`:''}</div>`;
     });
-    days.push(`<article class="payroll-day"><h4>${safeText(day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))}</h4>${rows.join('')||'<p>No shifts</p>'}</article>`);
+    days.push(`<article class="payroll-day"><h4>${safeText(displayDate(day))}</h4>${rows.join('')||'<p>No shifts</p>'}</article>`);
   }
   return `<div class="payroll-seven-day">${days.join('')}</div>`;
 }
@@ -796,9 +810,9 @@ function renderAdminReport(){
     if(total>0) cards.push(`<div class="rc payroll-card"><div class="rcn">${safeText(name)}</div><div class="rch">${safeText(total.toFixed(1))}<span> hrs</span></div><div class="rcl">Payroll total</div><div class="payroll-breakdown">Worked ${safeText(work.toFixed(1))} · Holiday ${safeText(paid.toFixed(1))} · Sick pay ${safeText(payableSick.toFixed(1))}</div></div>`);
     leaveRows.push([name,bal.allowance.toFixed(1),bal.taken.toFixed(1),bal.remaining.toFixed(1)]);
     for(const kind of ['req','upd']){
-      (Array.isArray(h[kind])?h[kind]:[]).forEach(r=>requests.push([name,kind==='req'?(reportN(r.unpaidHours)>0?'Mixed paid / unpaid':'Annual leave'):'Unpaid leave',String(r.status||'Unknown'),String(r.dateFrom||r.from||r.date||'—'),String(r.dateUntil||r.to||'—'),r.paidHours!==undefined&&r.unpaidHours!==undefined?`${reportN(r.paidHours).toFixed(1)} paid + ${reportN(r.unpaidHours).toFixed(1)} unpaid`:(r.hours==null?'—':reportN(r.hours).toFixed(1))]));
+      (Array.isArray(h[kind])?h[kind]:[]).forEach(r=>requests.push([name,kind==='req'?(reportN(r.unpaidHours)>0?'Mixed paid / unpaid':'Annual leave'):'Unpaid leave',String(r.status||'Unknown'),displayDateValue(r.dateFrom||r.from||r.date||'—'),displayDateValue(r.dateUntil||r.to||'—'),r.paidHours!==undefined&&r.unpaidHours!==undefined?`${reportN(r.paidHours).toFixed(1)} paid + ${reportN(r.unpaidHours).toFixed(1)} unpaid`:(r.hours==null?'—':reportN(r.hours).toFixed(1))]));
     }
-    (Array.isArray(h.sick)?h.sick:[]).forEach(r=>sickRows.push([name,String(r.dateFrom||r.date||'—'),String(r.dateUntil||'—'),(r.hours==null?'—':reportN(r.hours).toFixed(1)),String(r.status||'Logged')]));
+    (Array.isArray(h.sick)?h.sick:[]).forEach(r=>sickRows.push([name,displayDateValue(r.dateFrom||r.date||'—'),String(r.dateUntil||'—'),(r.hours==null?'—':reportN(r.hours).toFixed(1)),String(r.status||'Logged')]));
   });
   const section=(title,content)=>`<div class="admin-report-section"><h3>${safeText(title)}</h3>${content}</div>`;
   const sickOptions=names.map(n=>`<option value="${safeText(n)}">${safeText(n)}</option>`).join('');
@@ -852,7 +866,7 @@ function adminEditPanel(){
     const di=day.getDay()===0?6:day.getDay()-1;
     const key=dateKey(day,di);
     if(adminReportData?.dOv?.[key]){
-      controls.push(`<div class="admin-edit-note">${safeText(day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))}: custom shift structure — editing requires the advanced editor in a later update.</div>`);
+      controls.push(`<div class="admin-edit-note">${safeText(displayDate(day))}: custom shift structure — editing requires the advanced editor in a later update.</div>`);
       continue;
     }
     for(const shift of shiftsForDate(day)){
@@ -860,7 +874,7 @@ function adminEditPanel(){
       if(!Number.isInteger(originalIndex)||originalIndex<0)continue;
       if(['hol','unpaid','sick','unavailable','cover'].includes(shift.type))continue;
       const start=shift.s||shift.start;const end=shift.e||shift.end;
-      controls.push(`<form class="admin-edit-shift" data-edit-date="${adminEditDate(day)}" data-edit-index="${originalIndex}"><strong>${safeText(day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))}</strong><label>Staff<select name="staff">${staffOptions(shift.staff)}</select></label><label>Start<input name="start" type="time" value="${safeText(start)}" required></label><label>Finish<input name="end" type="time" value="${safeText(end)}" required></label><button type="submit" class="auth-btn">Save</button></form>`);
+      controls.push(`<form class="admin-edit-shift" data-edit-date="${adminEditDate(day)}" data-edit-index="${originalIndex}"><strong>${safeText(displayDate(day))}</strong><label>Staff<select name="staff">${staffOptions(shift.staff)}</select></label><label>Start<input name="start" type="time" value="${safeText(start)}" required></label><label>Finish<input name="end" type="time" value="${safeText(end)}" required></label><button type="submit" class="auth-btn">Save</button></form>`);
     }
   }
   const pending=[];
@@ -868,7 +882,7 @@ function adminEditPanel(){
     for(const [key,kind] of [['req','annual'],['upd','unpaid']]){
       for(const r of (Array.isArray(h?.[key])?h[key]:[])){
         if(r?.status!=='pending'||r.id===undefined||r.id===null)continue;
-        pending.push(`<div class="admin-leave-item"><div><strong>${safeText(name)} — ${kind==='annual'?'Annual':'Unpaid'} leave</strong><div>${safeText(r.date||r.dateFrom||'Date not recorded')} · ${r.paidHours!==undefined && r.unpaidHours!==undefined?`${safeText(reportN(r.paidHours).toFixed(1))}h paid + ${safeText(reportN(r.unpaidHours).toFixed(1))}h unpaid`:`${safeText(reportN(r.hours).toFixed(1))} hours`}</div></div><div><button class="auth-btn" data-leave-decision="approved" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Approve</button> <button class="auth-btn" data-leave-decision="declined" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Decline</button></div></div>`);
+        pending.push(`<div class="admin-leave-item"><div><strong>${safeText(name)} — ${kind==='annual'?'Annual':'Unpaid'} leave</strong><div>${safeText(displayDateValue(r.date||r.dateFrom||'Date not recorded'))} · ${r.paidHours!==undefined && r.unpaidHours!==undefined?`${safeText(reportN(r.paidHours).toFixed(1))}h paid + ${safeText(reportN(r.unpaidHours).toFixed(1))}h unpaid`:`${safeText(reportN(r.hours).toFixed(1))} hours`}</div></div><div><button class="auth-btn" data-leave-decision="approved" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Approve</button> <button class="auth-btn" data-leave-decision="declined" data-leave-name="${safeText(name)}" data-leave-kind="${kind}" data-leave-id="${safeText(String(r.id))}">Decline</button></div></div>`);
       }
     }
   }
@@ -883,7 +897,7 @@ function adminEditPanel(){
         if(day<today||sh.origIdx<0||!sh.staff||sh.staff==='(unassigned)'||
           ['hol','unpaid','sick','cover','unavailable','covered'].includes(sh.type))continue;
         const v=adminEditDate(day)+'|'+sh.origIdx;
-        options.push(`<option value="${safeText(v)}">${safeText(day.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))} · ${safeText(sh.staff)} · ${safeText(sh.s||sh.start)}–${safeText(sh.e||sh.end)}</option>`);
+        options.push(`<option value="${safeText(v)}">${safeText(displayDate(day))} · ${safeText(sh.staff)} · ${safeText(sh.s||sh.start)}–${safeText(sh.e||sh.end)}</option>`);
       }
     }
     return options;
@@ -1239,30 +1253,50 @@ function staffShiftList(){
     for(const s of shiftsForDate(date)){
       if(s.origIdx<0)continue;
       rows.push({date:adminEditDate(date),base_index:s.origIdx,id:s.id,staff:s.staff,type:s.type||'',
-        text:`${date.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})} ${s.s||s.start}–${s.e||s.end}`});
+        text:`${displayDate(date)} ${s.s||s.start}–${s.e||s.end}`});
     }
   }
   return rows;
 }
 const staffOpt=(date,idx)=>({date,base_index:Number(idx)});
 async function staffDo(operation,payload,feedbackId){
-  if(!staffSessionToken)return;
-  staffMsg('staffFeedback','Sending secure request…');
-  if(feedbackId)staffMsg(feedbackId,'Submitting swap offer…');
-  try{
-    const {response,data}=await authRequest('staff-action',{operation,payload},staffSessionToken);
-    if(!response.ok)throw Error(data.error||`Action failed (${response.status})`);
-    staffMsg('staffFeedback','Saved. Rota and account details refreshed.');
-    if(feedbackId)staffMsg(feedbackId,'Swap offer posted. Colleagues can now respond.');
-    await loadSchedule(); await staffFetchDashboard();
-    if(adminReportVisible)await loadAdminReport();
-    return true;
-  }catch(e){
-    const message=e.message||'Could not save request';
-    staffMsg('staffFeedback',message);
-    if(feedbackId)staffMsg(feedbackId,'Offer not saved: '+message);
+  if(!staffSessionToken){
+    if(feedbackId)staffMsg(feedbackId,'Please sign in again before submitting.');
     return false;
   }
+  staffMsg('staffFeedback','Submitting request…');
+  if(feedbackId)staffMsg(feedbackId,'Submitting request…');
+  let data;
+  try{
+    const result=await authRequest('staff-action',{operation,payload},staffSessionToken);
+    data=result.data||{};
+    if(!result.response.ok || data.success===false || data.error){
+      throw Error(data.error||`Action failed (HTTP ${result.response.status})`);
+    }
+  }catch(e){
+    const message=e.message||'Unable to submit request';
+    staffMsg('staffFeedback','Request not saved: '+message);
+    if(feedbackId)staffMsg(feedbackId,'Request not saved: '+message);
+    return false;
+  }
+  // The server has accepted the request. Don't report this as failed if refresh is unavailable.
+  const success=operation==='request_leave'
+    ?'Leave request submitted and awaiting administrator approval.'
+    :operation==='offer_swap'?'Swap offer posted. Colleagues can now respond.'
+    :'Request saved successfully.';
+  staffMsg('staffFeedback',success);
+  if(feedbackId)staffMsg(feedbackId,success);
+  try{
+    await loadSchedule();
+    await staffFetchDashboard();
+    if(adminReportVisible)await loadAdminReport();
+  }catch(e){
+    staffMsg('staffFeedback',success+' Refresh the page to view the latest information.');
+  }
+  // Leave submission is important enough to make the outcome visible even if
+  // rebuilding the dashboard removes its inline message.
+  if(operation==='request_leave')alert(success);
+  return true;
 }
 function staffRenderDashboard(){
   if(!staffSessionToken||!staffDashboardData)return;
@@ -1303,21 +1337,21 @@ function staffRenderDashboard(){
   if(pendingLeave)notices.push(`<div class="staff-notice"><strong>${pendingLeave} leave request${pendingLeave===1?'':'s'} awaiting approval</strong>.</div>`);
   staffEl('staffAlertsCount').textContent=String(available.length+otherOffers.length+pendingVols+pendingLeave);
   const stat=(label,value,detail)=>`<div class="staff-stat"><div class="staff-stat-label">${safeText(label)}</div><div class="staff-stat-number">${safeText(value)}</div><div class="staff-stat-detail">${safeText(detail)}</div></div>`;
-  let content=`<div class="staff-stats">${stat('This week',current.hrs+' hrs',current.shifts+' scheduled shifts')}${stat('Last week',last.hrs+' hrs','Scheduled, not confirmed worked')}${stat('Holiday remaining',holidayLeft.toFixed(1)+' hrs','Indicative; confirm with admin')}${stat('Next shift',next?next.text.split(' ').slice(0,3).join(' '):'None',next?next.text:'No scheduled upcoming shift')}</div>`;
+  let content=`<div class="staff-stats">${stat('This week',current.hrs+' hrs',current.shifts+' scheduled shifts')}${stat('Last week',last.hrs+' hrs','Scheduled, not confirmed worked')}${stat('Holiday remaining',holidayLeft.toFixed(1)+' hrs','Indicative; confirm with admin')}${stat('Next shift',next?displayDateValue(next.date):'None',next?next.text:'No scheduled upcoming shift')}</div>`;
   content+=`<div class="admin-report-section" id="staffNotificationsSection" tabindex="-1"><h3>Notifications & upcoming activity</h3>${notices.join('')||'<p>No new shift offers or outstanding requests.</p>'}${available.length?'<button type="button" class="staff-alert-action" data-staff-jump="staffCoverSection">View shifts available to claim</button>':''}${otherOffers.length?'<button type="button" class="staff-alert-action" data-staff-jump="staffSwapsSection">View swap offers</button>':''}</div>`;
   content+=`<div class="admin-report-section staff-upcoming"><h3>My upcoming shifts</h3>${mine.length?mine.slice(0,7).map(x=>`<div class="mrow"><span>${safeText(x.text)}</span><span>${safeText(x.type||'Scheduled')}</span></div>`).join('')+(mine.length>7?`<details class="staff-more"><summary>Show ${mine.length-7} more upcoming shifts</summary>${mine.slice(7).map(x=>`<div class="mrow"><span>${safeText(x.text)}</span><span>${safeText(x.type||'Scheduled')}</span></div>`).join('')}</details>`:''):'No shifts in the next three months.'}</div>`;
-  content+=`<div class="admin-report-section" id="staffCoverSection" tabindex="-1"><h3>Shift cover · Available to claim</h3>${available.length?`<p class="admin-edit-note">${available.length} shift${available.length===1?'':'s'} available in the next three months.</p><div class="staff-cover-list">${available.map(x=>`<article class="staff-cover-card"><div class="staff-cover-info"><span class="staff-cover-date">${safeText(new Date(x.date+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'}))}</span><span class="staff-cover-times">${safeText(x.text.replace(/^\S+\s+\d+\s+\S+\s*/,''))}</span><span class="staff-cover-tag">Cover needed</span></div><button type="button" class="auth-btn" data-staff-claim="${safeText(x.date+'|'+x.base_index)}" aria-label="Claim shift ${safeText(x.text)}">Claim</button></article>`).join('')}</div>`:'<p>No cover shifts currently available.</p>'}</div>`;
+  content+=`<div class="admin-report-section" id="staffCoverSection" tabindex="-1"><h3>Shift cover · Available to claim</h3>${available.length?`<p class="admin-edit-note">${available.length} shift${available.length===1?'':'s'} available in the next three months.</p><div class="staff-cover-list">${available.map(x=>`<article class="staff-cover-card"><div class="staff-cover-info"><span class="staff-cover-date">${safeText(displayDateValue(x.date))}</span><span class="staff-cover-times">${safeText(x.text.split(' ').slice(-1).join(' '))}</span><span class="staff-cover-tag">Cover needed</span></div><button type="button" class="auth-btn" data-staff-claim="${safeText(x.date+'|'+x.base_index)}" aria-label="Claim shift ${safeText(x.text)}">Claim</button></article>`).join('')}</div>`:'<p>No cover shifts currently available.</p>'}</div>`;
   const colleagueOptions=STAFF.filter(s=>s.name!==staffSessionName).map(s=>`<option value="${safeText(s.name)}">${safeText(s.name)}</option>`).join('');
   content+=`<div class="admin-report-section" id="staffSwapOfferSection" tabindex="-1"><h3>Offer a shift swap</h3><form id="staffSwapOfferForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Who should see this offer?</label><select name="target_staff"><option value="">All colleagues</option>${colleagueOptions}</select></div><button class="auth-btn" ${!eligibleMine.length?'disabled':''}>Offer shift for exchange</button><p id="staffSwapOfferFeedback" class="staff-inline-feedback" role="status" aria-live="polite"></p></form><p class="admin-edit-note">If you choose a colleague, only they can respond. They must offer one of their own available shifts for you to approve.</p></div>`;
   content+=`<div class="admin-report-section" id="staffSwapsSection" tabindex="-1"><h3>Swap offers</h3>${offers.length?offers.map(o=>{
-    const title=safeText(`${o.staff}: ${o.dateStr} ${o.s}–${o.e}${o.target_staff?' · offered to '+o.target_staff:''}`);
+    const title=safeText(`${o.staff}: ${displayDateValue(o.dateStr)} ${o.s}–${o.e}${o.target_staff?' · offered to '+o.target_staff:''}`);
     if(o.staff===staffSessionName)return `<div class="mrow"><span>${title} · ${o.vols.length} volunteers</span><button class="sbtn sr" data-swap-cancel="${safeText(o.id)}">Cancel</button></div>`+
       o.vols.map(v=>`<div class="mrow"><span>${safeText(v.name)} offers ${safeText(v.label)}</span><button class="sbtn sg" data-swap-accept="${safeText(o.id)}" data-volunteer="${safeText(v.name)}">Accept exchange</button></div>`).join('');
-    return `<form class="staffVolunteerForm mrow" data-offer-id="${safeText(o.id)}"><span><strong>${safeText(o.staff)}</strong> offers ${safeText(o.dateStr)} ${safeText(o.s)}–${safeText(o.e)}</span><label>My shift to exchange <select name="shift" required>${ownOpts}</select></label><button class="sbtn sg" ${!eligibleMine.length?'disabled':''}>Propose exchange</button></form>`;
+    return `<form class="staffVolunteerForm mrow" data-offer-id="${safeText(o.id)}"><span><strong>${safeText(o.staff)}</strong> offers ${safeText(displayDateValue(o.dateStr))} ${safeText(o.s)}–${safeText(o.e)}</span><label>My shift to exchange <select name="shift" required>${ownOpts}</select></label><button class="sbtn sg" ${!eligibleMine.length?'disabled':''}>Propose exchange</button></form>`;
   }).join(''):'No open swap offers.'}</div>`;
-  content+=`<div class="admin-report-section"><h3>Request leave</h3><form id="staffLeaveForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Leave type</label><select name="kind"><option value="annual">Paid annual leave</option><option value="unpaid">Unpaid leave</option></select></div><button class="auth-btn" ${!eligibleMine.length?'disabled':''}>Submit leave request</button></form><p style="font-size:11px;margin-top:8px">Unpaid leave can be requested even with no paid holiday remaining. Paid leave uses the balance available. If it does not cover the full shift, the remainder is automatically requested as unpaid leave. All leave requests require administrator approval.</p></div>`;
+  content+=`<div class="admin-report-section"><h3>Request leave</h3><form id="staffLeaveForm"><div class="auth-field"><label>My shift (next three months)</label><select name="shift" required>${ownOpts}</select></div><div class="auth-field"><label>Leave type</label><select name="kind"><option value="annual">Paid annual leave</option><option value="unpaid">Unpaid leave</option></select></div><button class="auth-btn" type="submit" ${!eligibleMine.length?'disabled':''}>Submit leave request</button><p id="staffLeaveFeedback" class="staff-inline-feedback" role="status" aria-live="polite"></p></form><p style="font-size:11px;margin-top:8px">Unpaid leave can be requested even with no paid holiday remaining. Paid leave uses the balance available. If it does not cover the full shift, the remainder is automatically requested as unpaid leave. All leave requests require administrator approval.</p></div>`;
   const leave=[...(h.req||[]).map(r=>({...r,kind:'annual'})),...(h.upd||[]).map(r=>({...r,kind:'unpaid'}))];
-  content+=`<div class="admin-report-section staff-leave-requests"><h3>My leave requests</h3>${leave.length?leave.map(r=>`<div class="mrow"><span>${safeText(r.kind)} · ${safeText(r.date)} · ${r.paidHours!==undefined&&r.unpaidHours!==undefined?`${safeText(reportN(r.paidHours).toFixed(1))}h paid + ${safeText(reportN(r.unpaidHours).toFixed(1))}h unpaid`:`${safeText(reportN(r.hours).toFixed(1))}h`} · ${safeText(r.status)}</span>${r.status==='pending'?`<button class="sbtn sr" data-leave-cancel="${safeText(r.id)}" data-leave-kind="${safeText(r.kind)}">Cancel</button>`:''}</div>`).join(''):'No recorded requests.'}</div>`;
+  content+=`<div class="admin-report-section staff-leave-requests"><h3>My leave requests</h3>${leave.length?leave.map(r=>`<div class="mrow"><span>${safeText(r.kind)} · ${safeText(displayDateValue(r.date))} · ${r.paidHours!==undefined&&r.unpaidHours!==undefined?`${safeText(reportN(r.paidHours).toFixed(1))}h paid + ${safeText(reportN(r.unpaidHours).toFixed(1))}h unpaid`:`${safeText(reportN(r.hours).toFixed(1))}h`} · ${safeText(r.status)}</span>${r.status==='pending'?`<button class="sbtn sr" data-leave-cancel="${safeText(r.id)}" data-leave-kind="${safeText(r.kind)}">Cancel</button>`:''}</div>`).join(''):'No recorded requests.'}</div>`;
   staffEl('staffDashboardContent').innerHTML=content;
 }
 function staffShiftActions(s){
@@ -1434,8 +1468,12 @@ staffEl('staffDashboardContent').addEventListener('submit',ev=>{
     const balance=Math.max(0,entitlement-reportN(h.taken));
     const paid=kind==='annual'?Math.min(length,balance):0;
     const unpaid=Math.max(0,length-paid);
-    if(!confirm(`Request ${length.toFixed(1)} hours off?\nPaid holiday: ${paid.toFixed(1)} hours\nUnpaid leave: ${unpaid.toFixed(1)} hours\n\nThis is an estimate; the server will recalculate the balance. The request remains pending until administrator approval.`))return;
-    staffDo('request_leave',{...shift,kind});
+    if(!confirm(`Request ${length.toFixed(1)} hours off on ${displayDateValue(shift.date)}?\nPaid holiday: ${paid.toFixed(1)} hours\nUnpaid leave: ${unpaid.toFixed(1)} hours\n\nThis is an estimate; the server will recalculate the balance. The request remains pending until administrator approval.`))return;
+    const submit=f.querySelector('button[type="submit"]');
+    if(submit){submit.disabled=true;submit.textContent='Submitting…';}
+    staffDo('request_leave',{...shift,kind},'staffLeaveFeedback').finally(()=>{
+      if(submit?.isConnected){submit.disabled=false;submit.textContent='Submit leave request';}
+    });
   }
   else if(f.matches('.staffVolunteerForm'))staffDo('volunteer_swap',{...shift,offer_id:f.dataset.offerId});
 });
